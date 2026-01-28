@@ -1,0 +1,15 @@
+# Core Pipecat
+pipecat-ai[daily,openai]
+
+# STT Options
+deepgram-sdk  # For Deepgram STT
+
+# TTS Options
+cartesia  # Cartesia TTS (recommended - cheap and good)
+elevenlabs  # ElevenLabs TTS (premium quality)
+# rime-api  # Rime AI TTS (very cheap)
+
+# Additional dependencies
+aiohttp
+python-dotenv
+websockets

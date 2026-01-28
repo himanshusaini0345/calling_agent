@@ -16,6 +16,8 @@ from openai import AsyncOpenAI
 from pathlib import Path
 import wave
 import io
+import aiohttp
+import time
 
 class ConversationalSpeechBot:
     """Real-time conversational bot using OpenAI APIs"""
@@ -30,31 +32,92 @@ class ConversationalSpeechBot:
         ]
         self.is_processing = False
     
-    async def transcribe_audio(self, audio_bytes):
-        """Transcribe audio using OpenAI Whisper"""
-        # Create a temporary file-like object
-        audio_file = io.BytesIO(audio_bytes)
-        audio_file.name = "audio.wav"
+    # async def transcribe_audio(self, audio_bytes):
+    #     """Transcribe audio using OpenAI Whisper"""
+    #     # Create a temporary file-like object
+    #     audio_file = io.BytesIO(audio_bytes)
+    #     audio_file.name = "audio.wav"
         
-        transcript = await self.client.audio.transcriptions.create(
-            model="whisper-1",
-            file=audio_file,
-            language="en"
-        )
-        return transcript.text
-    
+    #     transcript = await self.client.audio.transcriptions.create(
+    #         model="whisper-1",
+    #         file=audio_file,
+    #         language="en"
+    #     )
+    #     return transcript.text
+    async def transcribe_audio(self, audio_bytes):
+        """Transcribe audio using Deepgram"""
+        start = time.perf_counter()
+        url = "https://api.deepgram.com/v1/listen?model=nova-2&language=en"
+
+        headers = {
+            "Authorization": f"Token {os.getenv('DEEPGRAM_API_KEY')}",
+            "Content-Type": "audio/wav"
+        }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, headers=headers, data=audio_bytes) as resp:
+                if resp.status != 200:
+                    raise RuntimeError(f"Deepgram STT failed: {await resp.text()}")
+
+                result = await resp.json()
+
+            transcript = result["results"]["channels"][0]["alternatives"][0]["transcript"]
+
+        elapsed = (time.perf_counter() - start) * 1000
+        print(f"⏱ STT (Deepgram): {elapsed:.0f} ms")
+
+        return transcript
+
+    # async def generate_speech(self, text):
+    #     """Generate speech using OpenAI TTS"""
+    #     response = await self.client.audio.speech.create(
+    #         model="tts-1",  # Fast model
+    #         voice="alloy",  # Options: alloy, echo, fable, onyx, nova, shimmer
+    #         input=text,
+    #         speed=1.0
+    #     )
+    #     return response.content
     async def generate_speech(self, text):
-        """Generate speech using OpenAI TTS"""
-        response = await self.client.audio.speech.create(
-            model="tts-1",  # Fast model
-            voice="alloy",  # Options: alloy, echo, fable, onyx, nova, shimmer
-            input=text,
-            speed=1.0
-        )
-        return response.content
-    
+        """Generate speech using Cartesia"""
+        start = time.perf_counter()
+
+        url = "https://api.cartesia.ai/tts/bytes"
+
+        payload = {
+            "model_id": "sonic-english",
+            "voice": {
+                "id": "a0e99841-438c-4a64-b679-ae501e7d6091"
+            },
+            "transcript": text,
+            "output_format": {
+                "container": "mp3",
+                "encoding": "mp3",
+                "sample_rate": 44100
+            }
+        }
+
+        headers = {
+            "Authorization": f"Bearer {os.getenv('CARTESIA_API_KEY')}",
+            "Cartesia-Version": "2025-04-16",
+            "Content-Type": "application/json"
+        }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, headers=headers, json=payload) as resp:
+                if resp.status != 200:
+                    raise RuntimeError(f"Cartesia TTS failed: {await resp.text()}")
+
+                audio = await resp.read()
+
+        elapsed = (time.perf_counter() - start) * 1000
+        print(f"⏱ TTS (Cartesia): {elapsed:.0f} ms")
+
+        return audio
+
     async def chat(self, user_message):
         """Get chat response"""
+        start = time.perf_counter()
+
         self.messages.append({"role": "user", "content": user_message})
         
         response = await self.client.chat.completions.create(
@@ -67,6 +130,9 @@ class ConversationalSpeechBot:
         assistant_message = response.choices[0].message.content
         self.messages.append({"role": "assistant", "content": assistant_message})
         
+        elapsed = (time.perf_counter() - start) * 1000
+        print(f"⏱ LLM (OpenAI): {elapsed:.0f} ms")
+
         return assistant_message
     
     async def handle_client(self, websocket):
@@ -88,6 +154,7 @@ class ConversationalSpeechBot:
                     data = json.loads(message)
                     
                     if data["type"] == "audio":
+                        total_start = time.perf_counter()
                         # Decode base64 audio
                         audio_bytes = base64.b64decode(data["audio"])
                         
@@ -132,6 +199,9 @@ class ConversationalSpeechBot:
                             audio = await self.generate_speech(response)
                             audio_base64 = base64.b64encode(audio).decode()
                             
+                            total_elapsed = (time.perf_counter() - total_start) * 1000
+                            print(f"⏱ TOTAL (speech → speech): {total_elapsed:.0f} ms")
+
                             # Send audio response
                             await websocket.send(json.dumps({
                                 "type": "audio_response",

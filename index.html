@@ -1,59 +1,70 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
-<body>
-  <button id="start">Start Call</button>
-  <button id="stop" disabled>End Call</button>
+  <body>
+    <button id="start">Start Call</button>
+    <button id="stop">Stop</button>
 
-  <script>
-    let ws;
-    let audioCtx;
-    let processor;
-    let source;
+    <script>
+      let ws;
+      let audioCtx;
+      let processor;
+      let source;
+      let stream;
 
-    document.getElementById("start").onclick = async () => {
-      ws = new WebSocket("ws://localhost:9000");
+      document.getElementById("start").onclick = async () => {
+        ws = new WebSocket("ws://localhost:9000");
 
-      ws.onopen = async () => {
+        ws.onmessage = async (e) => {
+          const msg = JSON.parse(e.data);
+
+          if (msg.type === "audio") {
+            const audioCtx = new AudioContext({ sampleRate: 16000 });
+            await audioCtx.resume(); // 🔴 REQUIRED
+
+            const binary = atob(msg.data);
+            const buf = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) {
+              buf[i] = binary.charCodeAt(i);
+            }
+
+            const audioBuffer = await audioCtx.decodeAudioData(buf.buffer);
+            const src = audioCtx.createBufferSource();
+            src.buffer = audioBuffer;
+            src.connect(audioCtx.destination);
+            src.start();
+          }
+        };
+
         audioCtx = new AudioContext({ sampleRate: 16000 });
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         source = audioCtx.createMediaStreamSource(stream);
 
         processor = audioCtx.createScriptProcessor(4096, 1, 1);
         source.connect(processor);
         processor.connect(audioCtx.destination);
 
-        processor.onaudioprocess = e => {
+        processor.onaudioprocess = (e) => {
           const pcm = e.inputBuffer.getChannelData(0);
           ws.send(floatTo16BitPCM(pcm));
         };
-
-        document.getElementById("start").disabled = true;
-        document.getElementById("stop").disabled = false;
       };
 
-      ws.onmessage = e => {
-        const audio = new Audio("data:audio/wav;base64," + e.data);
-        audio.play();
+      document.getElementById("stop").onclick = () => {
+        ws?.close();
+        stream?.getTracks().forEach((t) => t.stop());
+        audioCtx?.close();
       };
-    };
 
-    document.getElementById("stop").onclick = () => {
-      ws.close();
-      audioCtx.close();
-      document.getElementById("start").disabled = false;
-      document.getElementById("stop").disabled = true;
-    };
-
-    function floatTo16BitPCM(float32) {
-      const buf = new ArrayBuffer(float32.length * 2);
-      const view = new DataView(buf);
-      let offset = 0;
-      for (let i = 0; i < float32.length; i++, offset += 2) {
-        let s = Math.max(-1, Math.min(1, float32[i]));
-        view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+      function floatTo16BitPCM(float32) {
+        const buf = new ArrayBuffer(float32.length * 2);
+        const view = new DataView(buf);
+        let offset = 0;
+        for (let i = 0; i < float32.length; i++, offset += 2) {
+          let s = Math.max(-1, Math.min(1, float32[i]));
+          view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+        }
+        return buf;
       }
-      return buf;
-    }
-  </script>
-</body>
+    </script>
+  </body>
 </html>

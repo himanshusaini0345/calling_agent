@@ -1,70 +1,57 @@
-<!doctype html>
+<!DOCTYPE html>
 <html>
-  <body>
-    <button id="start">Start Call</button>
-    <button id="stop">Stop</button>
+<body>
+<button id="start">Start Call</button>
+<button id="stop">End Call</button>
 
-    <script>
-      let ws;
-      let audioCtx;
-      let processor;
-      let source;
-      let stream;
+<script>
+let ws;
+let audioQueue = [];
+let playing = false;
 
-      document.getElementById("start").onclick = async () => {
-        ws = new WebSocket("ws://localhost:9000");
+function playNext() {
+  if (playing || audioQueue.length === 0) return;
+  playing = true;
 
-        ws.onmessage = async (e) => {
-          const msg = JSON.parse(e.data);
+  const audio = new Audio(audioQueue.shift());
+  audio.onended = () => {
+    playing = false;
+    playNext();
+  };
+  audio.play();
+}
 
-          if (msg.type === "audio") {
-            const audioCtx = new AudioContext({ sampleRate: 16000 });
-            await audioCtx.resume(); // 🔴 REQUIRED
+document.getElementById("start").onclick = async () => {
+  ws = new WebSocket("ws://localhost:9000");
 
-            const binary = atob(msg.data);
-            const buf = new Uint8Array(binary.length);
-            for (let i = 0; i < binary.length; i++) {
-              buf[i] = binary.charCodeAt(i);
-            }
+  ws.onmessage = e => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === "audio") {
+      audioQueue.push("data:audio/mp3;base64," + msg.data);
+      playNext();
+    }
+  };
 
-            const audioBuffer = await audioCtx.decodeAudioData(buf.buffer);
-            const src = audioCtx.createBufferSource();
-            src.buffer = audioBuffer;
-            src.connect(audioCtx.destination);
-            src.start();
-          }
-        };
+  const ctx = new AudioContext({ sampleRate: 16000 });
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const source = ctx.createMediaStreamSource(stream);
+  const proc = ctx.createScriptProcessor(4096, 1, 1);
 
-        audioCtx = new AudioContext({ sampleRate: 16000 });
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        source = audioCtx.createMediaStreamSource(stream);
+  source.connect(proc);
+  proc.connect(ctx.destination);
 
-        processor = audioCtx.createScriptProcessor(4096, 1, 1);
-        source.connect(processor);
-        processor.connect(audioCtx.destination);
+  proc.onaudioprocess = e => {
+    const pcm = e.inputBuffer.getChannelData(0);
+    const buf = new ArrayBuffer(pcm.length * 2);
+    const view = new DataView(buf);
+    pcm.forEach((v, i) =>
+      view.setInt16(i * 2, Math.max(-1, Math.min(1, v)) * 0x7fff, true)
+    );
+    ws.send(buf);
+  };
+};
 
-        processor.onaudioprocess = (e) => {
-          const pcm = e.inputBuffer.getChannelData(0);
-          ws.send(floatTo16BitPCM(pcm));
-        };
-      };
-
-      document.getElementById("stop").onclick = () => {
-        ws?.close();
-        stream?.getTracks().forEach((t) => t.stop());
-        audioCtx?.close();
-      };
-
-      function floatTo16BitPCM(float32) {
-        const buf = new ArrayBuffer(float32.length * 2);
-        const view = new DataView(buf);
-        let offset = 0;
-        for (let i = 0; i < float32.length; i++, offset += 2) {
-          let s = Math.max(-1, Math.min(1, float32[i]));
-          view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
-        }
-        return buf;
-      }
-    </script>
-  </body>
+document.getElementById("stop").onclick = () => ws?.close();
+</script>
+</body>
 </html>

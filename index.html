@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<body>
+  <button id="start">Start Call</button>
+  <button id="stop" disabled>End Call</button>
+
+  <script>
+    let ws;
+    let audioCtx;
+    let processor;
+    let source;
+
+    document.getElementById("start").onclick = async () => {
+      ws = new WebSocket("ws://localhost:9000");
+
+      ws.onopen = async () => {
+        audioCtx = new AudioContext({ sampleRate: 16000 });
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        source = audioCtx.createMediaStreamSource(stream);
+
+        processor = audioCtx.createScriptProcessor(4096, 1, 1);
+        source.connect(processor);
+        processor.connect(audioCtx.destination);
+
+        processor.onaudioprocess = e => {
+          const pcm = e.inputBuffer.getChannelData(0);
+          ws.send(floatTo16BitPCM(pcm));
+        };
+
+        document.getElementById("start").disabled = true;
+        document.getElementById("stop").disabled = false;
+      };
+
+      ws.onmessage = e => {
+        const audio = new Audio("data:audio/wav;base64," + e.data);
+        audio.play();
+      };
+    };
+
+    document.getElementById("stop").onclick = () => {
+      ws.close();
+      audioCtx.close();
+      document.getElementById("start").disabled = false;
+      document.getElementById("stop").disabled = true;
+    };
+
+    function floatTo16BitPCM(float32) {
+      const buf = new ArrayBuffer(float32.length * 2);
+      const view = new DataView(buf);
+      let offset = 0;
+      for (let i = 0; i < float32.length; i++, offset += 2) {
+        let s = Math.max(-1, Math.min(1, float32[i]));
+        view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+      }
+      return buf;
+    }
+  </script>
+</body>
+</html>

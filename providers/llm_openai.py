@@ -1,17 +1,19 @@
-"""OpenAI LLM provider."""
-from typing import AsyncIterator
+"""OpenAI LLM provider with conversation history and knowledge base support."""
+from typing import AsyncIterator, List, Dict, Optional
 from openai import AsyncOpenAI
 from .base import LLMProvider
 
 
 class OpenAILLM(LLMProvider):
-    """LLM provider using OpenAI API."""
+    """LLM provider using OpenAI API with conversation history and RAG support."""
     
     def __init__(
         self,
         api_key: str,
         model: str = "gpt-4o-mini",
         system_prompt: str = None,
+        max_history: int = 10,
+        knowledge_base: Optional[Dict[str, str]] = None,
     ):
         """
         Initialize OpenAI LLM.
@@ -20,36 +22,138 @@ class OpenAILLM(LLMProvider):
             api_key: OpenAI API key
             model: Model name (gpt-4o-mini, gpt-4o, etc.)
             system_prompt: Optional system prompt
+            max_history: Maximum number of conversation turns to keep
+            knowledge_base: Optional dict of {question: answer} for RAG
         """
         self.client = AsyncOpenAI(api_key=api_key)
         self.model = model
-        self.system_prompt = system_prompt or (
-            "You are a real-time conversational voice assistant. "
-            "Speak naturally, casually, and clearly, as if talking to a person. "
-
-            "Match the language of the user's input. "
-            "If the user speaks English, respond in English. "
-            "If the user switches language, switch with them. "
-
-            "Use light backchanneling where it feels natural, such as "
-            "'uh-huh', 'mm-hmm', 'I see', 'right', or 'okay', "
-            "but do not overuse them and never at the start of every sentence. "
-
-            "Respond in flowing spoken sentences. "
-            "Do NOT use numbered lists, bullet points, headings, or structured formatting. "
-            "Avoid phrases like 'first', 'second', 'here are', or reading-style explanations. "
-
-            "Keep sentences short and easy to listen to. "
-            "The response should sound natural when spoken aloud."
-        )
-
+        self.max_history = max_history
+        self.knowledge_base = knowledge_base or {}
+        self.system_prompt = system_prompt or self._default_system_prompt()
+        self.conversation_history: List[Dict[str, str]] = []
     
-    async def generate_stream(self, text: str) -> AsyncIterator[str]:
-        """Generate streaming response using OpenAI's Responses API."""
-        async with self.client.responses.stream(
+    def _default_system_prompt(self) -> str:
+        """Generate default system prompt."""
+        base_prompt = (
+            "You are a helpful voice assistant for Subharti University help desk. "
+            "You assist students, faculty, and staff with their questions about university operations, "
+            "attendance, leaves, admissions, events, and general queries.\n\n"
+            
+            "Guidelines:\n"
+            "- Keep responses concise and conversational for voice interaction\n"
+            "- Be polite and professional\n"
+            "- If you don't know something, say so honestly\n"
+            "- Use the knowledge base information when available\n"
+            "- Respond in the same language as the user (English or Hindi)\n"
+        )
+        
+        if self.knowledge_base:
+            base_prompt += (
+                "\n\nKnowledge Base:\n"
+                "Use the following Q&A pairs to answer questions when relevant:\n\n"
+            )
+            for i, (q, a) in enumerate(list(self.knowledge_base.items())[:10], 1):
+                # Truncate long answers for context window
+                answer = a[:200] + "..." if len(a) > 200 else a
+                base_prompt += f"{i}. Q: {q}\n   A: {answer}\n\n"
+        
+        return base_prompt
+    
+    def add_to_history(self, role: str, content: str):
+        """Add a message to conversation history."""
+        self.conversation_history.append({"role": role, "content": content})
+        
+        # Keep only recent history
+        if len(self.conversation_history) > self.max_history * 2:
+            self.conversation_history = self.conversation_history[-self.max_history * 2:]
+    
+    def clear_history(self):
+        """Clear conversation history."""
+        self.conversation_history = []
+    
+    def get_history(self) -> List[Dict[str, str]]:
+        """Get current conversation history."""
+        return self.conversation_history.copy()
+    
+    def _find_relevant_context(self, query: str) -> Optional[str]:
+        """Find relevant context from knowledge base using simple keyword matching."""
+        query_lower = query.lower()
+        
+        # Simple keyword matching
+        best_match = None
+        best_score = 0
+        
+        for question, answer in self.knowledge_base.items():
+            # Skip generic "not found" answers
+            if "could not find" in answer.lower():
+                continue
+            
+            # Count matching words
+            question_words = set(question.lower().split())
+            query_words = set(query_lower.split())
+            matching_words = question_words.intersection(query_words)
+            score = len(matching_words)
+            
+            if score > best_score:
+                best_score = score
+                best_match = answer
+        
+        # Return match if score is significant
+        if best_score >= 2:  # At least 2 matching words
+            return best_match
+        
+        return None
+    
+    async def generate_stream(self, text: str, use_history: bool = True) -> AsyncIterator[str]:
+        """
+        Generate streaming response using OpenAI Chat Completions API.
+        
+        Args:
+            text: User input
+            use_history: Whether to include conversation history
+            
+        Yields:
+            Text chunks as they're generated
+        """
+        # Find relevant context from knowledge base
+        relevant_context = self._find_relevant_context(text)
+        
+        # Build user message with context if found
+        user_message = text
+        if relevant_context:
+            user_message = (
+                f"User query: {text}\n\n"
+                f"Relevant information from knowledge base:\n{relevant_context}\n\n"
+                "Please use this information to answer the user's question naturally."
+            )
+        
+        # Add user message to history (original text, not augmented)
+        self.add_to_history("user", text)
+        
+        # Build messages array
+        messages = [{"role": "system", "content": self.system_prompt}]
+        
+        if use_history and len(self.conversation_history) > 1:
+            # Add conversation history (excluding the just-added user message)
+            messages.extend(self.conversation_history[:-1])
+        
+        # Add current user message (with context if found)
+        messages.append({"role": "user", "content": user_message})
+        
+        # Stream response
+        full_response = ""
+        async with self.client.chat.completions.create(
             model=self.model,
-            input=text,
+            messages=messages,
+            stream=True,
+            temperature=0.7,
+            max_tokens=500,  # Limit response length for voice
         ) as stream:
-            async for event in stream:
-                if event.type == "response.output_text.delta":
-                    yield event.delta
+            async for chunk in stream:
+                if chunk.choices[0].delta.content:
+                    content = chunk.choices[0].delta.content
+                    full_response += content
+                    yield content
+        
+        # Add assistant response to history
+        self.add_to_history("assistant", full_response)

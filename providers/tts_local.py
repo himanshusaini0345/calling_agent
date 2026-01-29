@@ -52,11 +52,16 @@ class PiperTTS(TTSProvider):
             # Synthesize audio
             self.voice.synthesize(
                 text,
-                wav_file,
-                speaker_id=self.speaker_id
+                wav_file
             )
         
-        return wav_io.getvalue()
+        raw = wav_io.getvalue()
+
+        print("🔍 WAV_BYTES_LEN:", len(raw))
+        print("🔍 WAV_BYTES_HEX:", raw[:64].hex(" "))
+
+        return raw
+
     
     def get_audio_format(self) -> dict:
         """Get audio format information."""

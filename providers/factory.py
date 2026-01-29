@@ -67,5 +67,14 @@ class ProviderFactory:
             from .tts_cartesia import CartesiaTTS
             api_key = kwargs.pop("api_key", os.getenv("CARTESIA_API_KEY"))
             return CartesiaTTS(api_key=api_key, **kwargs)
+        elif provider == "pyttsx3":
+            from .tts_espeak import EspeakTTS
+            return EspeakTTS(**kwargs)
+        elif provider == "edge":
+            from .tts_edge import EdgeTTS
+            return EdgeTTS(**kwargs)
+        elif provider == "coqui":
+            from .tts_coqui import CoquiTTS
+            return CoquiTTS(**kwargs)
         else:
             raise ValueError(f"Unknown TTS provider: {provider}")

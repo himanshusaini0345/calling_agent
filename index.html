@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Voice Assistant Test Client</title>
+</head>
+<body>
+
+<button id="toggle">🎤 Start Conversation</button>
+
+<script>
+let ws;
+let audioCtx;
+let processor;
+let source;
+let stream;
+let running = false;
+
+let audioQueue = [];
+let playing = false;
+
+function playNext() {
+  if (playing || audioQueue.length === 0) return;
+
+  playing = true;
+  const audio = new Audio(audioQueue.shift());
+  audio.onended = () => {
+    playing = false;
+    playNext();
+  };
+  audio.onerror = (e) => {
+    console.error("❌ Audio play error", e);
+    playing = false;
+    playNext();
+  };
+  audio.play();
+}
+
+document.getElementById("toggle").onclick = async () => {
+  if (!running) {
+    // ---------- START ----------
+    ws = new WebSocket("ws://localhost:9000");
+
+    ws.onopen = async () => {
+      console.log("✅ Connected to server");
+
+      audioCtx = new AudioContext({ sampleRate: 16000 });
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      source = audioCtx.createMediaStreamSource(stream);
+      processor = audioCtx.createScriptProcessor(4096, 1, 1);
+
+      source.connect(processor);
+      processor.connect(audioCtx.destination);
+
+      processor.onaudioprocess = (e) => {
+        if (ws.readyState !== WebSocket.OPEN) return;
+
+        const input = e.inputBuffer.getChannelData(0);
+        const buffer = new ArrayBuffer(input.length * 2);
+        const view = new DataView(buffer);
+
+        for (let i = 0; i < input.length; i++) {
+          let s = Math.max(-1, Math.min(1, input[i]));
+          view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+        }
+
+        ws.send(buffer);
+      };
+
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.type === "audio") {
+          audioQueue.push(
+            "data:audio/wav;base64," + msg.data
+          );
+          playNext();
+        }
+      };
+
+      ws.onclose = () => console.log("🔌 Disconnected");
+
+      running = true;
+      document.getElementById("toggle").innerText = "⏹ Stop Conversation";
+    };
+
+  } else {
+    // ---------- STOP ----------
+    running = false;
+
+    processor?.disconnect();
+    source?.disconnect();
+    stream?.getTracks().forEach(t => t.stop());
+    audioCtx?.close();
+    ws?.close();
+
+    audioQueue = [];
+    playing = false;
+
+    document.getElementById("toggle").innerText = "🎤 Start Conversation";
+    console.log("🛑 Conversation stopped");
+  }
+};
+</script>
+
+</body>
+</html>

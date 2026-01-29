@@ -35,7 +35,7 @@ class OpenAILLM(LLMProvider):
     def _default_system_prompt(self) -> str:
         """Generate default system prompt."""
         base_prompt = (
-            "You are a helpful voice assistant for Subharti University help desk. "
+            "You are a helpful female voice assistant for Subharti University help desk. "
             "You assist students, faculty, and staff with their questions about university operations, "
             "attendance, leaves, admissions, events, and general queries.\n\n"
             
@@ -142,18 +142,16 @@ class OpenAILLM(LLMProvider):
         
         # Stream response
         full_response = ""
-        async with self.client.chat.completions.create(
+
+        async with self.client.responses.stream(
             model=self.model,
-            messages=messages,
-            stream=True,
+            input=messages,
             temperature=0.7,
-            max_tokens=500,  # Limit response length for voice
         ) as stream:
-            async for chunk in stream:
-                if chunk.choices[0].delta.content:
-                    content = chunk.choices[0].delta.content
-                    full_response += content
-                    yield content
+            async for event in stream:
+                if event.type == "response.output_text.delta":
+                    full_response += event.delta
+                    yield event.delta
         
         # Add assistant response to history
         self.add_to_history("assistant", full_response)

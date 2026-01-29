@@ -1,15 +1,18 @@
-# Core Pipecat
-pipecat-ai[daily,openai]
+# Core dependencies
+python-dotenv>=1.0.0
+websockets>=12.0
+aiohttp>=3.9.0
 
-# STT Options
-deepgram-sdk  # For Deepgram STT
+# OpenAI (LLM)
+openai>=1.12.0
 
-# TTS Options
-cartesia  # Cartesia TTS (recommended - cheap and good)
-elevenlabs  # ElevenLabs TTS (premium quality)
-# rime-api  # Rime AI TTS (very cheap)
+# Cloud providers (optional)
+# Uncomment if using cloud providers
+# deepgram-sdk>=3.0.0  # Alternative to raw websockets for Deepgram
 
-# Additional dependencies
-aiohttp
-python-dotenv
-websockets
+# Local STT (Faster Whisper)
+faster-whisper>=1.0.0
+numpy>=1.24.0
+
+# Local TTS (Piper)
+piper-tts>=1.2.0

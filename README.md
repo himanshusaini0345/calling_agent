@@ -1,322 +1,260 @@
-# End-to-End Speech Bot with Pipecat
+# Modular Voice Assistant Pipeline
 
-A real-time voice conversation bot using Pipecat framework with cost-effective, open-source friendly options.
+A flexible, modular voice assistant server with pluggable STT, LLM, and TTS providers. Supports both cloud and local (CPU-based) providers.
 
-## 🎯 Features
+## Architecture
 
-- **Real-time voice conversations** via WebRTC (Daily.co)
-- **Multiple provider options** for STT, TTS, and LLM
-- **Cost-optimized** configurations
-- **Easy to deploy** and customize
+```
+Audio Input → STT → LLM → TTS → Audio Output
+              ↓     ↓     ↓
+         [Provider Interfaces]
+              ↓     ↓     ↓
+    [Multiple Implementations]
+```
 
-## 📊 Cost Comparison
+### Components
 
-### Speech-to-Text (STT)
-| Provider | Cost | Quality | Speed | Free Tier |
-|----------|------|---------|-------|-----------|
-| **Deepgram** | $0.0043/min | Excellent | Very Fast | $200 credits |
-| Whisper (OpenAI) | $0.006/min | Excellent | Fast | No |
-| Azure Speech | $1/hour | Excellent | Fast | 5 hours/month |
+- **STT (Speech-to-Text)**
+  - Local: Faster Whisper (CPU, multilingual)
+  - Cloud: Deepgram
+  
+- **LLM (Language Model)**
+  - OpenAI (gpt-4o-mini, gpt-4o)
+  
+- **TTS (Text-to-Speech)**
+  - Local: Piper (CPU)
+  - Cloud: Cartesia
 
-**Recommendation**: Deepgram (best balance)
+## Installation
 
-### Text-to-Speech (TTS)
-| Provider | Cost | Quality | Latency | Free Tier |
-|----------|------|---------|---------|-----------|
-| **Cartesia** | $0.00015/sec (~$0.009/min) | Excellent | <300ms | $10 credits |
-| Rime AI | $0.0001/sec (~$0.006/min) | Good | <200ms | Limited |
-| Deepgram | $0.015/1K chars (~$0.03/min) | Good | <300ms | $200 credits |
-| ElevenLabs | $0.24/1K chars (~$0.50/min) | Excellent | ~400ms | 10K chars/month |
-| Coqui TTS | Free (self-hosted) | Good | Varies | N/A |
-
-**Recommendation**: Cartesia (best quality/cost) or Rime AI (cheapest)
-
-### LLM Options
-| Provider | Model | Cost | Quality | Speed |
-|----------|-------|------|---------|-------|
-| **OpenAI** | gpt-4o-mini | $0.15/$0.60 per 1M tokens | Excellent | Fast |
-| OpenAI | gpt-3.5-turbo | $0.50/$1.50 per 1M tokens | Good | Very Fast |
-| Together AI | Llama-3.1-8B | $0.18/$0.18 per 1M tokens | Good | Fast |
-| Together AI | Llama-3.1-70B | $0.88/$0.88 per 1M tokens | Excellent | Fast |
-| Groq | Llama-3.1-8B | $0.05/$0.08 per 1M tokens | Good | Very Fast |
-
-**Recommendation**: gpt-4o-mini (excellent balance) or Together AI for open source
-
-## 🚀 Quick Start
-
-### 1. Install Dependencies
+### 1. Install Python dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Set Up API Keys
+### 2. Download local models (if using local providers)
 
-Copy `.env.example` to `.env` and add your keys:
+#### Faster Whisper (STT)
+Models download automatically on first use. Supported sizes:
+- `tiny` - Fastest, least accurate
+- `base` - Good balance (recommended)
+- `small` - Better accuracy
+- `medium` - High accuracy
+- `large-v3` - Best accuracy
 
-```bash
-cp .env.example .env
-```
-
-**Required Keys:**
-- **OpenAI API Key**: Get at https://platform.openai.com/api-keys
-- **Daily.co API Key**: Get free at https://dashboard.daily.co/developers
-
-**Choose ONE STT Provider:**
-- **Deepgram** (Recommended): https://console.deepgram.com/ - $200 free credits
-
-**Choose ONE TTS Provider:**
-- **Cartesia** (Recommended): https://play.cartesia.ai/ - $10 free credits
-- **Rime AI**: https://rime.ai/ - Very cheap
-- **Deepgram**: Use same key as STT
-
-### 3. Run the Bot
+#### Piper (TTS)
+Download a voice model from [Piper voices](https://github.com/rhasspy/piper/releases/tag/v1.0.0):
 
 ```bash
-python speech_bot.py
+# Example: Download English US voice
+wget https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx
+wget https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json
 ```
 
-You'll get a URL to join the conversation via web browser.
+Update `TTS_CONFIG["model_path"]` in `server.py` with the path to your `.onnx` file.
 
-## 💰 Cost-Optimized Configurations
+### 3. Configure environment variables
 
-### Ultra-Cheap Setup (~$0.02/minute)
+Create a `.env` file:
+
 ```env
-STT_PROVIDER=deepgram
-TTS_PROVIDER=rime
-LLM_PROVIDER=openai
-LLM_MODEL=gpt-4o-mini
+# Only needed if using cloud providers
+OPENAI_API_KEY=your_openai_key
+DEEPGRAM_API_KEY=your_deepgram_key
+CARTESIA_API_KEY=your_cartesia_key
 ```
 
-### Balanced Setup (~$0.03/minute)
-```env
-STT_PROVIDER=deepgram
-TTS_PROVIDER=cartesia
-LLM_PROVIDER=openai
-LLM_MODEL=gpt-4o-mini
-```
+## Configuration
 
-### Premium Quality Setup (~$0.55/minute)
-```env
-STT_PROVIDER=deepgram
-TTS_PROVIDER=elevenlabs
-LLM_PROVIDER=openai
-LLM_MODEL=gpt-4o
-```
+Edit `server.py` to switch providers:
 
-## 🔧 Alternative LLM Providers
-
-### Using Together AI (Open Source Models)
+### Use Local STT + Local TTS (No API keys needed!)
 
 ```python
-# In your .env
-LLM_PROVIDER=together
-TOGETHER_API_KEY=your_key
+STT_CONFIG = {
+    "provider": "local",
+    "model_size": "base",  # tiny, base, small, medium, large-v3
+    "language": None,  # Auto-detect or specify: "en", "es", "fr", etc.
+    "device": "cpu",
+    "compute_type": "int8",
+}
+
+TTS_CONFIG = {
+    "provider": "local",
+    "model_path": "/path/to/your/piper-model.onnx",
+}
 ```
 
-Install Together AI:
-```bash
-pip install together
-```
-
-**Available Models:**
-- `meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo` - Fast and cheap
-- `meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo` - High quality
-- `mistralai/Mixtral-8x7B-Instruct-v0.1` - Good balance
-
-### Using Groq (Ultra-Fast)
-
-```bash
-pip install groq
-```
+### Use Cloud Providers
 
 ```python
-from pipecat.services.groq import GroqLLMService
+STT_CONFIG = {
+    "provider": "deepgram",
+    "model": "nova-2",
+    "language": "en",
+}
 
-llm = GroqLLMService(
-    api_key=os.getenv("GROQ_API_KEY"),
-    model="llama-3.1-8b-instant"
-)
+TTS_CONFIG = {
+    "provider": "cartesia",
+    "voice_id": "a0e99841-438c-4a64-b679-ae501e7d6091",
+    "model_id": "sonic-english",
+}
 ```
 
-### Self-Hosted Options
+### Mixed Configuration
 
-**Ollama (Free, Local)**
-```bash
-# Install Ollama
-curl -fsSL https://ollama.com/install.sh | sh
+You can mix and match! For example:
+- Local STT + Cloud LLM + Local TTS
+- Cloud STT + Cloud LLM + Cloud TTS
 
-# Pull a model
-ollama pull llama3.1:8b
+## Usage
 
-# Use in Pipecat
-pip install ollama
-```
-
-**vLLM (Fast self-hosted)**
-```bash
-pip install vllm
-python -m vllm.entrypoints.openai.api_server \
-    --model meta-llama/Meta-Llama-3.1-8B-Instruct
-```
-
-## 🎤 Alternative STT Options
-
-### Self-Hosted Whisper (Free)
+### Start the server
 
 ```bash
-pip install openai-whisper
+python server.py
 ```
+
+You should see:
+
+```
+==================================================
+🎙️  Voice Assistant Server
+==================================================
+STT Provider: local
+LLM Provider: openai (gpt-4o-mini)
+TTS Provider: local
+==================================================
+🚀 Server running at ws://0.0.0.0:9000
+==================================================
+```
+
+### Client connection
+
+Connect via WebSocket and send raw PCM audio (16-bit, 16kHz, mono):
+
+```javascript
+const ws = new WebSocket('ws://localhost:9000');
+
+// Send audio chunks
+ws.send(audioChunk);  // Raw PCM bytes
+
+// Receive responses
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  if (data.type === 'audio') {
+    const audioBytes = base64ToArrayBuffer(data.data);
+    // Play audio
+  }
+};
+```
+
+## Supported Languages (Local STT)
+
+Faster Whisper supports 99+ languages. Set `language` parameter:
 
 ```python
-from pipecat.services.whisper import WhisperSTTService
-
-stt = WhisperSTTService(
-    model="base"  # Options: tiny, base, small, medium, large
-)
+STT_CONFIG = {
+    "provider": "local",
+    "language": "es",  # Spanish
+    # Or None for auto-detection
+}
 ```
 
-### Faster-Whisper (Optimized)
+Common codes: `en`, `es`, `fr`, `de`, `it`, `pt`, `ru`, `ja`, `zh`, `ko`, `ar`, `hi`
 
-```bash
-pip install faster-whisper
-```
+## Performance
 
-Much faster than standard Whisper with same quality.
+### Local Providers (CPU)
+- **STT (Faster Whisper)**: 
+  - `base` model: ~100-300ms latency
+  - `tiny` model: ~50-100ms latency
+  
+- **TTS (Piper)**: 
+  - ~50-200ms per sentence
 
-## 🔊 Alternative TTS Options
+### Cloud Providers
+- **STT (Deepgram)**: ~50-150ms
+- **TTS (Cartesia)**: ~100-300ms
 
-### Self-Hosted Coqui TTS (Free)
+Faster LLM models (gpt-4o-mini) reduce time to first audio significantly.
 
-```bash
-pip install TTS
-```
+## Adding New Providers
+
+### 1. Create provider class
+
+Inherit from the base class in `providers/base.py`:
 
 ```python
-from TTS.api import TTS
+# providers/stt_whisper_cpp.py
+from .base import STTProvider
 
-tts = TTS(model_name="tts_models/en/ljspeech/tacotron2-DDC")
+class WhisperCppSTT(STTProvider):
+    async def transcribe_stream(self, audio_stream):
+        # Your implementation
+        pass
+    
+    async def close(self):
+        pass
 ```
 
-### Piper TTS (Fast & Free)
+### 2. Add to factory
 
-```bash
-pip install piper-tts
-```
-
-Very fast, lightweight, runs on CPU.
-
-## 🌐 Cloud-Hosted Open Source Models
-
-### RunPod (GPU Instances)
-- Deploy Whisper, TTS models on demand
-- Pay per minute of GPU usage
-- https://runpod.io/
-
-### Replicate
-- Pre-deployed open source models
-- Pay per API call
-- https://replicate.com/
-
-### Modal
-- Serverless GPU functions
-- Great for TTS/STT models
-- https://modal.com/
-
-### HuggingFace Inference
-- Hosted open source models
-- Free tier available
-- https://huggingface.co/inference-api
-
-## 📝 Advanced Configuration
-
-### Custom System Prompt
-
-Edit the `messages` list in `speech_bot.py`:
+Edit `providers/factory.py`:
 
 ```python
-messages = [
-    {
-        "role": "system",
-        "content": "You are a friendly customer service bot. Be helpful and concise."
-    }
-]
+elif provider == "whisper_cpp":
+    from .stt_whisper_cpp import WhisperCppSTT
+    return WhisperCppSTT(**kwargs)
 ```
 
-### Using WebSocket Instead of Daily
+### 3. Use in configuration
 
 ```python
-from pipecat.transports.websocket import WebsocketTransport
-
-transport = WebsocketTransport(
-    host="0.0.0.0",
-    port=8765
-)
+STT_CONFIG = {
+    "provider": "whisper_cpp",
+    # Your config
+}
 ```
 
-### Adding Memory/Context
+## Project Structure
 
-```python
-# Store conversation history
-conversation_history = []
-
-# Add to aggregators
-user_response = LLMUserResponseAggregator(
-    messages=messages,
-    history=conversation_history
-)
+```
+.
+├── providers/
+│   ├── __init__.py
+│   ├── base.py              # Abstract base classes
+│   ├── factory.py           # Provider factory
+│   ├── stt_local.py         # Faster Whisper STT
+│   ├── stt_deepgram.py      # Deepgram STT
+│   ├── llm_openai.py        # OpenAI LLM
+│   ├── tts_local.py         # Piper TTS
+│   └── tts_cartesia.py      # Cartesia TTS
+├── pipeline.py              # Main pipeline orchestration
+├── server.py                # WebSocket server
+├── requirements.txt
+└── README.md
 ```
 
-## 🔒 Production Considerations
+## Troubleshooting
 
-1. **Rate Limiting**: Add rate limits to prevent abuse
-2. **Authentication**: Implement user authentication
-3. **Monitoring**: Track usage and costs
-4. **Error Handling**: Add retry logic and fallbacks
-5. **Caching**: Cache TTS responses for common phrases
+### Faster Whisper model download fails
+- Check internet connection
+- Models are cached in `~/.cache/huggingface/`
 
-## 📚 Resources
+### Piper model not found
+- Ensure `.onnx` and `.onnx.json` files are in the same directory
+- Provide absolute path to model
 
-- **Pipecat Docs**: https://docs.pipecat.ai/
-- **Daily.co Docs**: https://docs.daily.co/
-- **Deepgram Docs**: https://developers.deepgram.com/
-- **Cartesia Docs**: https://docs.cartesia.ai/
+### High CPU usage
+- Use smaller models: `tiny` for STT, smaller Piper voices
+- Reduce `sample_rate` if possible
 
-## 💡 Tips
+### Audio format issues
+- Input must be 16-bit PCM, 16kHz, mono
+- Output format varies by TTS provider (check `get_audio_format()`)
 
-1. **Start with free tiers** to test before scaling
-2. **Cartesia** offers best TTS quality/cost ratio
-3. **Deepgram** has generous free credits for STT
-4. **gpt-4o-mini** is 10x cheaper than GPT-4 with great quality
-5. Use **WebRTC** (Daily) for lowest latency
-6. Consider **self-hosted** options for high-volume use
+## License
 
-## 🐛 Troubleshooting
-
-**Audio issues?**
-- Check microphone permissions in browser
-- Ensure Daily.co room is created successfully
-
-**High latency?**
-- Use Cartesia or Rime for TTS (lowest latency)
-- Consider regional API endpoints
-
-**Rate limits?**
-- Add delays between requests
-- Implement queuing for high traffic
-
-## 📊 Estimated Monthly Costs
-
-For a bot handling **1000 minutes/month** of conversation:
-
-| Configuration | STT | TTS | LLM | Total/month |
-|--------------|-----|-----|-----|-------------|
-| Ultra-Cheap | $4.30 | $6 | $5 | **~$15** |
-| Balanced | $4.30 | $9 | $5 | **~$18** |
-| Premium | $4.30 | $500 | $20 | **~$524** |
-
-*LLM costs assume ~1000 tokens per conversation*
-
-## 📄 License
-
-MIT License - feel free to use in commercial projects!
+MIT

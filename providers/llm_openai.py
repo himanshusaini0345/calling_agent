@@ -12,7 +12,7 @@ class OpenAILLM(LLMProvider):
         api_key: str,
         model: str = "gpt-4o-mini",
         system_prompt: str = None,
-        max_history: int = 10,
+        max_history: int = 1000,
         knowledge_base: Optional[Dict[str, str]] = None,
     ):
         """

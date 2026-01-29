@@ -67,6 +67,10 @@ class ProviderFactory:
             from .tts_cartesia import CartesiaTTS
             api_key = kwargs.pop("api_key", os.getenv("CARTESIA_API_KEY"))
             return CartesiaTTS(api_key=api_key, **kwargs)
+        elif provider == "openai":
+            from .tts_openai import OpenAITTS
+            api_key = kwargs.pop("api_key", os.getenv("OPENAI_API_KEY"))
+            return OpenAITTS(api_key=api_key, **kwargs)
         elif provider == "pyttsx3":
             from .tts_espeak import EspeakTTS
             return EspeakTTS(**kwargs)

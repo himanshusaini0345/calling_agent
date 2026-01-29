@@ -31,11 +31,13 @@ class VoicePipeline:
         self.tts = tts
         self.sentence_delimiters = sentence_delimiters
         self.enable_timing = enable_timing
+        self._utterance_id = 0
     
     async def process_utterance(
         self,
         text: str,
         audio_callback: Callable[[bytes, int], asyncio.Task],
+        utterance_id
     ):
         """
         Process a single user utterance through LLM and TTS.
@@ -44,6 +46,9 @@ class VoicePipeline:
             text: Transcribed user input
             audio_callback: Async callback function(audio_bytes, sequence_number)
         """
+        if utterance_id != self._utterance_id:
+            return  # interrupted
+        
         t0 = perf_counter()
         
         if self.enable_timing:
@@ -57,6 +62,9 @@ class VoicePipeline:
         
         # Stream LLM response
         async for chunk in self.llm.generate_stream(text):
+            if utterance_id != self._utterance_id:
+                print("⛔ Interrupted during LLM")
+                return
             if first_token and self.enable_timing:
                 print(f"⏱️  LLM first token @ {(perf_counter()-t0)*1000:.0f} ms")
                 first_token = False
@@ -73,7 +81,7 @@ class VoicePipeline:
                 
                 if self.enable_timing:
                     print(f"🗣️  TTS chunk: {sentence}")
-                
+
                 # Synthesize audio
                 t_tts_start = perf_counter()
                 audio = await self.tts.synthesize(sentence)
@@ -115,8 +123,13 @@ class VoicePipeline:
         """
         # Stream transcription
         async for text in self.stt.transcribe_stream(audio_input_stream):
+            self._utterance_id += 1
+            current_id = self._utterance_id
             # Process each transcribed utterance
-            await self.process_utterance(text, audio_callback)
+            asyncio.create_task(
+                self.process_utterance(text, audio_callback, current_id)
+            )
+
     
     async def cleanup(self):
         """Clean up all providers."""

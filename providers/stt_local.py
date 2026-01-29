@@ -13,7 +13,7 @@ class FasterWhisperSTT(STTProvider):
     def __init__(
         self,
         model_size: str = "base",
-        language: str = None,  # None = auto-detect
+        language: str = 'None',  # None = auto-detect
         device: str = "cpu",
         compute_type: str = "int8",
         vad_filter: bool = True,
@@ -53,7 +53,7 @@ class FasterWhisperSTT(STTProvider):
             # Process when we have enough data
             if len(self.buffer) < self.min_chunk_size:
                 continue
-            
+
             audio_data = bytes(self.buffer)
             self.buffer.clear()
             

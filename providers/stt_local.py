@@ -1,5 +1,6 @@
 """Local STT provider using Faster Whisper."""
 import asyncio
+from time import monotonic
 import numpy as np
 from typing import AsyncIterator
 from faster_whisper import WhisperModel
@@ -16,6 +17,8 @@ class FasterWhisperSTT(STTProvider):
         device: str = "cpu",
         compute_type: str = "int8",
         vad_filter: bool = True,
+        silence_timeout: float = 0.7,  # seconds
+        min_audio_seconds: float = 1.0,
     ):
         """
         Initialize Faster Whisper model.
@@ -37,32 +40,57 @@ class FasterWhisperSTT(STTProvider):
         self.vad_filter = vad_filter
         self.sample_rate = 16000
         self.buffer = bytearray()
-        self.min_chunk_size = self.sample_rate * 2  # 1 second of 16-bit audio
-        
+        self.min_chunk_size = self.sample_rate * 2 * min_audio_seconds # 1 second of 16-bit audio
+        self.text_buffer: list[str] = []
+        self.last_speech_time = None
+        self.silence_timeout = silence_timeout
+
     async def transcribe_stream(self, audio_stream: AsyncIterator[bytes]) -> AsyncIterator[str]:
         """Transcribe streaming audio chunks."""
         async for chunk in audio_stream:
             self.buffer.extend(chunk)
             
             # Process when we have enough data
-            if len(self.buffer) >= self.min_chunk_size:
-                audio_data = bytes(self.buffer)
-                self.buffer.clear()
+            if len(self.buffer) < self.min_chunk_size:
+                continue
+            
+            audio_data = bytes(self.buffer)
+            self.buffer.clear()
+            
+            # Convert bytes to numpy array (16-bit PCM)
+            audio_np = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
+            
+            # Run transcription in thread pool to avoid blocking
+            segments, _ = await asyncio.to_thread(
+                self._transcribe,
+                audio_np
+            )
+            now = monotonic()
+            speech_detected = False
+
+            for segment in segments:
+                text = segment.text.strip()
+                if not text:
+                    continue
                 
-                # Convert bytes to numpy array (16-bit PCM)
-                audio_np = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
+                speech_detected = True
+                self.last_speech_time = now
+                self.text_buffer.append(text)
+
+            
+
+            # 🔑 ENDPOINTING LOGIC
+            if (
+                self.text_buffer
+                and self.last_speech_time
+                and (now - self.last_speech_time) >= self.silence_timeout
+            ):
+                utterance = " ".join(self.text_buffer).strip()
+                self.text_buffer.clear()
+                self.last_speech_time = None
                 
-                # Run transcription in thread pool to avoid blocking
-                segments, info = await asyncio.to_thread(
-                    self._transcribe,
-                    audio_np
-                )
-                
-                # Collect all segments
-                text = " ".join(segment.text.strip() for segment in segments)
-                
-                if text:
-                    yield text
+                if utterance:
+                    yield utterance
     
     def _transcribe(self, audio_np):
         """Synchronous transcription (run in thread pool)."""
@@ -70,7 +98,7 @@ class FasterWhisperSTT(STTProvider):
             audio_np,
             language=self.language,
             vad_filter=self.vad_filter,
-            without_timestamps=True,
+            without_timestamps=True,    
         )
         # Convert generator to list to ensure all segments are processed
         return list(segments), info

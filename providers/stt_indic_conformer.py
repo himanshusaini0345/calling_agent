@@ -7,7 +7,7 @@ from collections import deque
 from transformers import AutoModel
 
 from providers.base import STTProvider
-
+from transformers import AutoModel
 
 
 class IndicConformerSTT(STTProvider):
@@ -16,8 +16,9 @@ class IndicConformerSTT(STTProvider):
     Endpointing via RMS-based silence detection.
     """
 
-    def __init__(
+    def __init__(   
         self,
+        model: AutoModel,
         language: str = "hi",
         decoder_type: str = "ctc",   # "ctc" or "rnnt"
         input_sample_rate: int = 16000,
@@ -27,6 +28,8 @@ class IndicConformerSTT(STTProvider):
         min_speech_duration: float = 0.3,
         chunk_duration: float = 0.1,
     ):
+        if model is None:
+            raise ValueError("IndicConformerSTT received None model")
         self.language = language
         self.decoder_type = decoder_type
         self.input_sample_rate = input_sample_rate
@@ -41,10 +44,7 @@ class IndicConformerSTT(STTProvider):
         self.audio_chunks = deque()
         self.silence_chunks = 0
 
-        self.model = AutoModel.from_pretrained(
-            "ai4bharat/indic-conformer-600m-multilingual",
-            trust_remote_code=True
-        )
+        self.model = model
 
         self.resampler = None
         if input_sample_rate != target_sample_rate:
@@ -107,4 +107,3 @@ class IndicConformerSTT(STTProvider):
 
     async def close(self):
         self.audio_chunks.clear()
-        self.model = None

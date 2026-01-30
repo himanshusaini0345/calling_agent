@@ -33,33 +33,17 @@ class OpenAILLM(LLMProvider):
         self.conversation_history: List[Dict[str, str]] = []
     
     def _default_system_prompt(self) -> str:
-        """Generate default system prompt."""
-        base_prompt = ( 
-            "You are a helpful female voice assistant for Subharti University help desk. "
-            "You may also handle simple conversational requests (such as greetings, counting, or clarifications)"
-            "to keep the interaction natural, but always gently steer the conversation back to university-related help when appropriate."
-            "You assist students, faculty, and staff with their questions about university operations, "
-            "attendance, leaves, admissions, events, and general queries.\n\n"
-            
-            "Guidelines:\n" 
-            "- Keep responses concise and conversational for voice interaction\n"
-            "- Be polite and professional\n"
-            "- If you don't know something, say so honestly\n"
-            "- Use the knowledge base information when available\n"
-            "- Respond in the same language as the user (English or Hindi)\n"
+        return (
+            "ROLE: Female Voice assistant for Subharti University help desk.\n"
+            "DOMAIN: University operations, admissions, exams, attendance, facilities, general queries.\n"
+            "STYLE: Concise, factual, voice-friendly.Speak naturally like a human assistant. Avoid using bullet points, numbered lists, headings, or any formatted text. Respond in complete sentences that flow naturally in spoken conversation.\n"
+            "TONE: Friendly, helpful, and patient. Use natural transitions like 'Let me tell you about that,' 'For example,' or 'Also, I should mention.'"
+            "LANGUAGE: Match user language (English/Hindi).\n"
+            "UNKNOWN: Politely say if information is not available. Example: 'I m sorry, I don't have that specific information right now.'\n\n"
+            "REFERENCE CONTEXT:\n"
+            f"{self.knowledge_base}"
         )
-        
-        if self.knowledge_base:
-            base_prompt += (
-                "\n\nKnowledge Base:\n"
-                "Use the following Q&A pairs to answer questions when relevant:\n\n"
-            )
-            for i, (q, a) in enumerate(list(self.knowledge_base.items()), 1):
-                # Truncate long answers for context window
-                base_prompt += f"{i}. Q: {q}\n   A: {a}\n\n"
-        
-        return base_prompt
-    
+
     def add_to_history(self, role: str, content: str):
         """Add a message to conversation history."""
         self.conversation_history.append({"role": role, "content": content})
@@ -76,32 +60,7 @@ class OpenAILLM(LLMProvider):
         """Get current conversation history."""
         return self.conversation_history.copy()
     
-    def _find_relevant_context(self, query: str) -> Optional[str]:
-        """Find relevant context from knowledge base using simple keyword matching."""
-        query_lower = query.lower()
-        
-        # Simple keyword matching
-        best_match = None
-        best_score = 0
-        
-        for question, answer in self.knowledge_base.items():
-            
-            # Count matching words
-            question_words = set(question.lower().split())
-            query_words = set(query_lower.split())
-            matching_words = question_words.intersection(query_words)
-            score = len(matching_words)
-            
-            if score > best_score:
-                best_score = score
-                best_match = answer
-        
-        # Return match if score is significant
-        if best_score >= 2:  # At least 2 matching words
-            return best_match
-        
-        return None
-    
+   
     async def generate_stream(self, text: str, use_history: bool = True) -> AsyncIterator[str]:
         """
         Generate streaming response using OpenAI Chat Completions API.
@@ -113,17 +72,9 @@ class OpenAILLM(LLMProvider):
         Yields:
             Text chunks as they're generated
         """
-        # Find relevant context from knowledge base
-        relevant_context = self._find_relevant_context(text)
         
         # Build user message with context if found
         user_message = text
-        # if relevant_context:
-        #     user_message = (
-        #         f"User query: {text}\n\n"
-        #         f"Relevant information from knowledge base:\n{relevant_context}\n\n"
-        #         "Please use this information to answer the user's question naturally."
-        #     )
         
         # Add user message to history (original text, not augmented)
         self.add_to_history("user", text)

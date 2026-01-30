@@ -11,7 +11,7 @@ class OpenAILLM(LLMProvider):
         self,
         api_key: str,
         model: str = "gpt-4o-mini",
-        system_prompt: str = None,
+        system_prompt: Optional[str] = None,
         max_history: int = 1000,
         knowledge_base: Optional[Dict[str, str]] = None,
     ):
@@ -29,17 +29,19 @@ class OpenAILLM(LLMProvider):
         self.model = model
         self.max_history = max_history
         self.knowledge_base = knowledge_base or {}
-        self.system_prompt = system_prompt or self._default_system_prompt()
+        self.system_prompt = self._default_system_prompt()
         self.conversation_history: List[Dict[str, str]] = []
     
     def _default_system_prompt(self) -> str:
         """Generate default system prompt."""
-        base_prompt = (
+        base_prompt = ( 
             "You are a helpful female voice assistant for Subharti University help desk. "
+            "You may also handle simple conversational requests (such as greetings, counting, or clarifications)"
+            "to keep the interaction natural, but always gently steer the conversation back to university-related help when appropriate."
             "You assist students, faculty, and staff with their questions about university operations, "
             "attendance, leaves, admissions, events, and general queries.\n\n"
             
-            "Guidelines:\n"
+            "Guidelines:\n" 
             "- Keep responses concise and conversational for voice interaction\n"
             "- Be polite and professional\n"
             "- If you don't know something, say so honestly\n"
@@ -52,10 +54,9 @@ class OpenAILLM(LLMProvider):
                 "\n\nKnowledge Base:\n"
                 "Use the following Q&A pairs to answer questions when relevant:\n\n"
             )
-            for i, (q, a) in enumerate(list(self.knowledge_base.items())[:10], 1):
+            for i, (q, a) in enumerate(list(self.knowledge_base.items()), 1):
                 # Truncate long answers for context window
-                answer = a[:200] + "..." if len(a) > 200 else a
-                base_prompt += f"{i}. Q: {q}\n   A: {answer}\n\n"
+                base_prompt += f"{i}. Q: {q}\n   A: {a}\n\n"
         
         return base_prompt
     
@@ -84,9 +85,6 @@ class OpenAILLM(LLMProvider):
         best_score = 0
         
         for question, answer in self.knowledge_base.items():
-            # Skip generic "not found" answers
-            if "could not find" in answer.lower():
-                continue
             
             # Count matching words
             question_words = set(question.lower().split())
@@ -120,12 +118,12 @@ class OpenAILLM(LLMProvider):
         
         # Build user message with context if found
         user_message = text
-        if relevant_context:
-            user_message = (
-                f"User query: {text}\n\n"
-                f"Relevant information from knowledge base:\n{relevant_context}\n\n"
-                "Please use this information to answer the user's question naturally."
-            )
+        # if relevant_context:
+        #     user_message = (
+        #         f"User query: {text}\n\n"
+        #         f"Relevant information from knowledge base:\n{relevant_context}\n\n"
+        #         "Please use this information to answer the user's question naturally."
+        #     )
         
         # Add user message to history (original text, not augmented)
         self.add_to_history("user", text)
@@ -139,6 +137,8 @@ class OpenAILLM(LLMProvider):
         
         # Add current user message (with context if found)
         messages.append({"role": "user", "content": user_message})
+        
+        # _debug_print_messages(messages)
         
         # Stream response
         full_response = ""
@@ -155,3 +155,18 @@ class OpenAILLM(LLMProvider):
         
         # Add assistant response to history
         self.add_to_history("assistant", full_response)
+        
+def _debug_print_messages( messages: List[Dict[str, str]]):
+    print("\n" + "=" * 80)
+    print("📤 OPENAI REQUEST PAYLOAD")
+    print("=" * 80)
+
+    for i, msg in enumerate(messages, 1):
+        role = msg["role"].upper()
+        content = msg["content"]
+
+        print(f"\n[{i}] ROLE: {role}")
+        print("-" * 80)
+        print(content)
+
+    print("\n" + "=" * 80 + "\n")

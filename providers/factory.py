@@ -22,6 +22,9 @@ class ProviderFactory:
         if provider == "local":
             from .stt_local import FasterWhisperSTT
             return FasterWhisperSTT(**kwargs)
+        if provider == "indic":
+            from .stt_indic_conformer import IndicConformerSTT
+            return IndicConformerSTT(**kwargs)
         elif provider == "deepgram":
             from .stt_deepgram import DeepgramSTT
             api_key = kwargs.pop("api_key", os.getenv("DEEPGRAM_API_KEY"))

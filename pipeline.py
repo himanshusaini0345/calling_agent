@@ -13,6 +13,8 @@ class VoicePipeline:
         stt: STTProvider,
         llm: LLMProvider,
         tts: TTSProvider,
+        min_tts_chars,
+        max_tts_chars,
         sentence_delimiters: tuple = (".", "!", "?", ","),
         enable_timing: bool = True,
     ):
@@ -30,6 +32,8 @@ class VoicePipeline:
         self.llm = llm
         self.tts = tts
         self.sentence_delimiters = sentence_delimiters
+        self.min_tts_chars = min_tts_chars
+        self.max_tts_chars = max_tts_chars
         self.enable_timing = enable_timing
         self._utterance_id = 0
         self._current_task = None
@@ -75,8 +79,18 @@ class VoicePipeline:
             
             buffer += chunk
             
+            hit_delimiter = any(buffer.endswith(delim) for delim in self.sentence_delimiters)
+            buffer_len = len(buffer.strip())
+            
+            # 🚦 Decide whether to flush to TTS
+            should_flush = (
+                hit_delimiter and buffer_len >= self.min_tts_chars
+            ) or (
+                buffer_len >= self.max_tts_chars
+            )
+
             # Check if we hit a sentence delimiter
-            if any(buffer.endswith(delim) for delim in self.sentence_delimiters):
+            if should_flush:
                 sentence = buffer.strip()
                 buffer = ""
                 

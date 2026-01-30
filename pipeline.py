@@ -1,9 +1,11 @@
 """Voice assistant pipeline orchestrating STT -> LLM -> TTS with interruption handling."""
 import asyncio
+import logging
 from time import perf_counter
 from typing import AsyncIterator, Callable, Optional
 from providers.base import STTProvider, LLMProvider, TTSProvider
 
+logger = logging.getLogger("app")
 
 class VoicePipeline:
     """Pipeline orchestrating STT, LLM, and TTS providers with server-side audio queue management."""
@@ -58,8 +60,8 @@ class VoicePipeline:
         t0 = perf_counter()
         
         if self.enable_timing:
-            print(f"\n👤 USER: {text}")
-            print(f"⏱️  STT complete @ 0 ms")
+            logger.info(f"\n👤 USER: {text}")
+            logger.info(f"⏱️  STT complete @ 0 ms")
         
         buffer = ""
         seq = 0
@@ -70,11 +72,11 @@ class VoicePipeline:
         async for chunk in self.llm.generate_stream(text):
             if utterance_id != self._utterance_id:
                 if self.enable_timing:
-                    print("⛔ Interrupted during LLM")
+                    logger.info("⛔ Interrupted during LLM")
                 return
             
             if first_token and self.enable_timing:
-                print(f"⏱️  LLM first token @ {(perf_counter()-t0)*1000:.0f} ms")
+                logger.info(f"⏱️  LLM first token @ {(perf_counter()-t0)*1000:.0f} ms")
                 first_token = False
             
             buffer += chunk
@@ -98,7 +100,7 @@ class VoicePipeline:
                     continue
                 
                 if self.enable_timing:
-                    print(f"🗣️  TTS chunk: {sentence}")
+                    logger.info(f"🗣️  TTS chunk: {sentence}")
 
                 # Synthesize audio
                 audio = await self.tts.synthesize(sentence)
@@ -106,12 +108,12 @@ class VoicePipeline:
                 # Check again if interrupted after synthesis
                 if utterance_id != self._utterance_id:
                     if self.enable_timing:
-                        print("⛔ Interrupted during TTS")
+                        logger.info("⛔ Interrupted during TTS")
                     return
                 
                 if self.enable_timing:
                     t_audio = (perf_counter() - t0) * 1000
-                    print(f"⏱️  TTS done @ {t_audio:.0f} ms ({len(audio)} bytes)")
+                    logger.info(f"⏱️  TTS done @ {t_audio:.0f} ms ({len(audio)} bytes)")
                 
                 # Send audio chunk via callback
                 await audio_callback("audio_chunk", {
@@ -122,7 +124,7 @@ class VoicePipeline:
                 
                 if first_audio and self.enable_timing:
                     t_first = (perf_counter() - t0) * 1000
-                    print(f"⏱️  First audio sent @ {t_first:.0f} ms")
+                    logger.info(f"⏱️  First audio sent @ {t_first:.0f} ms")
                     first_audio = False
                 
                 seq += 1
@@ -145,7 +147,7 @@ class VoicePipeline:
         
         if self.enable_timing:
             total = (perf_counter() - t0) * 1000
-            print(f"⏱️  Total time: {total:.0f} ms\n")
+            logger.info(f"⏱️  Total time: {total:.0f} ms\n")
     
     async def run(
         self,
@@ -167,7 +169,7 @@ class VoicePipeline:
             current_id = self._utterance_id
             
             if self.enable_timing:
-                print(f"🔔 New utterance detected (ID: {current_id}, interrupting: {old_id})")
+                logger.info(f"🔔 New utterance detected (ID: {current_id}, interrupting: {old_id})")
             
             # Signal client to clear audio queue
             await audio_callback("clear_queue", {

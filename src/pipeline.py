@@ -18,9 +18,9 @@ class VoicePipeline:
         stt: STTProvider,
         llm: LLMProvider,
         tts: TTSProvider,
-        translator: Optional[IndicTrans2Translator],
         min_tts_chars,
         max_tts_chars,
+        translator: Optional[IndicTrans2Translator] = None,
         sentence_delimiters: tuple = (".", "!", "?", ","),
         enable_timing: bool = True,
     ):

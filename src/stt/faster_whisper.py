@@ -13,12 +13,13 @@ class FasterWhisperSTT(STTProvider):
     
     def __init__(
         self,
+        model: WhisperModel,
         model_size: str = "base",
-        language: str = 'None',  # None = auto-detect
+        language: str = "hi",  
         device: str = "cpu",
         compute_type: str = "int8",
         vad_filter: bool = True,
-        silence_timeout: float = 0.7,  # seconds
+        silence_timeout: float = 0.1,  # seconds
         min_audio_seconds: float = 1.0,
     ):
         """
@@ -31,12 +32,7 @@ class FasterWhisperSTT(STTProvider):
             compute_type: "int8", "int16", "float16", "float32"
             vad_filter: Enable voice activity detection
         """
-        print(f"Loading Faster Whisper model: {model_size} ({device}/{compute_type})")
-        self.model = WhisperModel(
-            model_size,
-            device=device,
-            compute_type=compute_type
-        )
+        self.model = model
         self.language = language
         self.vad_filter = vad_filter
         self.sample_rate = 16000

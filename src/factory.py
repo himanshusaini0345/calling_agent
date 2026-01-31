@@ -31,7 +31,7 @@ class ProviderFactory:
             provider: "local" (Faster Whisper) or "deepgram"
             **kwargs: Provider-specific arguments
         """
-        if provider == "local":
+        if provider == "whisper":
             return FasterWhisperSTT(**kwargs)
         if provider == "indic":
             return IndicConformerSTT(**kwargs)

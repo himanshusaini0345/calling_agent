@@ -215,7 +215,7 @@
         if (!running) {
           // ---------- START ----------
           log("🔌 Connecting to server...", "info");
-          ws = new WebSocket("ws://localhost:9000");
+          ws = new WebSocket("ws://localhost:9000/ws");
 
           ws.onopen = async () => {
             log("✅ Connected to server", "success");
@@ -244,6 +244,12 @@
                   let s = Math.max(-1, Math.min(1, input[i]));
                   view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
                 }
+                console.log(
+                  "📤 sending audio",
+                  buffer.byteLength,
+                  "ws state",
+                  ws.readyState,
+                );
 
                 ws.send(buffer);
               };
@@ -259,6 +265,7 @@
           };
 
           ws.onmessage = (event) => {
+            console.log("📥 WS message received", event.data);
             const msg = JSON.parse(event.data);
 
             if (msg.type === "clear_queue") {
@@ -280,7 +287,6 @@
                 audioQueue.push({
                   seq: msg.seq,
                   data: msg.data,
-                  format: msg.format.format || "mp3",
                   utteranceId: msg.utterance_id,
                 });
 

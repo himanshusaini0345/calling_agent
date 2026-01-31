@@ -1,7 +1,8 @@
 """OpenAI LLM provider with conversation history and knowledge base support."""
 from typing import AsyncIterator, List, Dict, Optional
 from openai import AsyncOpenAI
-from .base import LLMProvider
+
+from src.llm.llm_provider import LLMProvider
 
 
 class OpenAILLM(LLMProvider):
@@ -11,7 +12,6 @@ class OpenAILLM(LLMProvider):
         self,
         api_key: str,
         model: str = "gpt-4o-mini",
-        system_prompt: Optional[str] = None,
         max_history: int = 1000,
         knowledge_base: Optional[Dict[str, str]] = None,
     ):
@@ -21,7 +21,6 @@ class OpenAILLM(LLMProvider):
         Args:
             api_key: OpenAI API key
             model: Model name (gpt-4o-mini, gpt-4o, etc.)
-            system_prompt: Optional system prompt
             max_history: Maximum number of conversation turns to keep
             knowledge_base: Optional dict of {question: answer} for RAG
         """
@@ -63,7 +62,7 @@ class OpenAILLM(LLMProvider):
    
     async def generate_stream(self, text: str, use_history: bool = True) -> AsyncIterator[str]:
         """
-        Generate streaming response using OpenAI Chat Completions API.
+        Generate streaming response
         
         Args:
             text: User input
@@ -73,25 +72,19 @@ class OpenAILLM(LLMProvider):
             Text chunks as they're generated
         """
         
-        # Build user message with context if found
         user_message = text
         
-        # Add user message to history (original text, not augmented)
         self.add_to_history("user", text)
         
-        # Build messages array
         messages = [{"role": "system", "content": self.system_prompt}]
         
         if use_history and len(self.conversation_history) > 1:
-            # Add conversation history (excluding the just-added user message)
             messages.extend(self.conversation_history[:-1])
         
-        # Add current user message (with context if found)
         messages.append({"role": "user", "content": user_message})
         
         # _debug_print_messages(messages)
         
-        # Stream response
         full_response = ""
 
         async with self.client.responses.stream(
@@ -104,7 +97,6 @@ class OpenAILLM(LLMProvider):
                     full_response += event.delta
                     yield event.delta
         
-        # Add assistant response to history
         self.add_to_history("assistant", full_response)
         
 def _debug_print_messages( messages: List[Dict[str, str]]):

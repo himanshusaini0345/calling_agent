@@ -1,7 +1,5 @@
-"""Base interfaces for STT, LLM, and TTS providers."""
 from abc import ABC, abstractmethod
-from typing import AsyncIterator, Optional
-
+from typing import AsyncIterator
 
 class STTProvider(ABC):
     """Base class for Speech-to-Text providers."""
@@ -23,22 +21,4 @@ class STTProvider(ABC):
     async def close(self):
         """Clean up resources."""
         pass
-
-
-class LLMProvider(ABC):
-    """Base class for Language Model providers."""
-    
-    @abstractmethod
-    async def generate_stream(self, text: str) -> AsyncIterator[str]:
-        """
-        Generate streaming response from text input.
-        
-        Args:
-            text: Input text to generate response for
-            
-        Yields:
-            Text chunks as they're generated
-        """
-        pass
-
 

@@ -4,7 +4,8 @@ from time import monotonic
 import numpy as np
 from typing import AsyncIterator
 from faster_whisper import WhisperModel
-from .base import STTProvider
+
+from src.stt.stt_provider import STTProvider
 
 
 class FasterWhisperSTT(STTProvider):

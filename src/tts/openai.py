@@ -1,7 +1,7 @@
 """OpenAI Text-to-Speech provider."""
 from openai import AsyncOpenAI
 
-from tts.tts_provider import TTSProvider
+from src.tts.tts_provider import TTSProvider
 
 
 class OpenAITTS(TTSProvider):

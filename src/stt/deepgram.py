@@ -3,7 +3,8 @@ import asyncio
 import json
 import websockets
 from typing import AsyncIterator
-from .base import STTProvider
+
+from src.stt.stt_provider import STTProvider
 
 
 class DeepgramSTT(STTProvider):

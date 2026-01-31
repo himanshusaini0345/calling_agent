@@ -5,7 +5,7 @@ import io
 from typing import Optional
 from piper import PiperVoice
 
-from tts.tts_provider import TTSProvider
+from src.tts.tts_provider import TTSProvider
 
 
 class PiperTTS(TTSProvider):

@@ -1,7 +1,7 @@
 """Cartesia TTS provider."""
 import aiohttp
 
-from tts.tts_provider import TTSProvider
+from src.tts.tts_provider import TTSProvider
 
 
 class CartesiaTTS(TTSProvider):

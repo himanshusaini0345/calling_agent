@@ -3,9 +3,10 @@ import asyncio
 import logging
 from time import perf_counter
 from typing import AsyncIterator, Callable, Optional
-from providers.base import STTProvider, LLMProvider
-from translators.indicTrans2_translator import IndicTrans2Translator
-from tts.tts_provider import TTSProvider
+from src.llm.llm_provider import LLMProvider
+from src.stt.stt_provider import STTProvider
+from src.translators.indicTrans2 import IndicTrans2Translator
+from src.tts.tts_provider import TTSProvider
 
 logger = logging.getLogger("app")
 
@@ -65,7 +66,9 @@ class VoicePipeline:
         
         if self.enable_timing:
             logger.info(f"\n👤 USER: {text}")
-            logger.info(f"⏱️  STT complete @ 0 ms")
+            t_stt = (perf_counter() - t0) * 1000
+            logger.info(f"⏱️  STT complete @ {t_stt:.0f} ms")
+
         
         buffer = ""
         seq = 0

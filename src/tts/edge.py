@@ -1,7 +1,7 @@
 """Local/Cloud TTS provider using Microsoft Edge TTS (free, no API key needed)."""
 import edge_tts
 
-from tts.tts_provider import TTSProvider
+from src.tts.tts_provider import TTSProvider
 
 
 class EdgeTTS(TTSProvider):

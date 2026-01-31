@@ -3,7 +3,7 @@ import os
 import tempfile
 import pyttsx3
 
-from tts.tts_provider import TTSProvider
+from src.tts.tts_provider import TTSProvider
 
 
 class EspeakTTS(TTSProvider):

@@ -4,7 +4,7 @@ import io
 import numpy as np
 from typing import Optional
 
-from tts.tts_provider import TTSProvider
+from src.tts.tts_provider import TTSProvider
 
 
 class CoquiTTS(TTSProvider):

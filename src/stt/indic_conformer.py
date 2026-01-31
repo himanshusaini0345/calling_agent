@@ -1,3 +1,4 @@
+import logging
 from typing import AsyncIterator
 import torch
 import torchaudio
@@ -6,9 +7,10 @@ import asyncio
 from collections import deque
 from transformers import AutoModel
 
-from providers.base import STTProvider
 from transformers import AutoModel
 
+from src.stt.stt_provider import STTProvider
+logger = logging.getLogger("app")
 
 class IndicConformerSTT(STTProvider):
     """
@@ -23,10 +25,10 @@ class IndicConformerSTT(STTProvider):
         decoder_type: str = "ctc",   # "ctc" or "rnnt"
         input_sample_rate: int = 16000,
         target_sample_rate: int = 16000,
-        silence_threshold: float = 0.015,
-        silence_duration: float = 0.8,
+        silence_threshold: float = 0.02,
+        silence_duration: float = 0.25   ,
         min_speech_duration: float = 0.3,
-        chunk_duration: float = 0.1,
+        chunk_duration: float = 0.256,
     ):
         if model is None:
             raise ValueError("IndicConformerSTT received None model")
@@ -62,6 +64,8 @@ class IndicConformerSTT(STTProvider):
             return ""
 
         audio = np.concatenate(self.audio_chunks)
+        logger.info(f"🧠 Decoding {len(audio)} samples")
+
         self.audio_chunks.clear()
 
         wav = torch.from_numpy(audio).float()
@@ -80,12 +84,15 @@ class IndicConformerSTT(STTProvider):
         return text.strip()
 
     async def transcribe_stream(self, audio_stream: AsyncIterator[bytes]) -> AsyncIterator[str]:
+        
         async for audio_bytes in audio_stream:
             chunk = (
                 np.frombuffer(audio_bytes, dtype=np.int16)
                 .astype(np.float32) / 32768.0
             )
-
+            # rms = self._rms(chunk)
+            # logger.info(f"🎚 RMS={rms:.4f}")
+                
             if self._rms(chunk) < self.silence_threshold:
                 self.silence_chunks += 1
 

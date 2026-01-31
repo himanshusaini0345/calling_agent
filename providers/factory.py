@@ -66,6 +66,13 @@ class ProviderFactory:
         if provider == "local":
             from .tts_local import PiperTTS
             return PiperTTS(**kwargs)
+        elif provider == "azure":
+            from .tts_azure import AzureTTS
+            return AzureTTS(
+                speech_key=kwargs["speech_key"],
+                region=kwargs["region"],
+                voice=kwargs.get("voice", "hi-IN-SwaraNeural")
+            )
         elif provider == "cartesia":
             from .tts_cartesia import CartesiaTTS
             api_key = kwargs.pop("api_key", os.getenv("CARTESIA_API_KEY"))

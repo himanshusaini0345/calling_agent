@@ -1,301 +1,335 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Voice Assistant - Server-Controlled Playback</title>
-  <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      max-width: 800px;
-      margin: 50px auto;
-      padding: 20px;
-      background: #f5f5f5;
-    }
-    .container {
-      background: white;
-      border-radius: 12px;
-      padding: 30px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-    }
-    h1 {
-      text-align: center;
-      color: #333;
-    }
-    #toggle {
-      display: block;
-      width: 200px;
-      margin: 20px auto;
-      padding: 15px 30px;
-      font-size: 18px;
-      border: none;
-      border-radius: 8px;
-      background: #4CAF50;
-      color: white;
-      cursor: pointer;
-      transition: all 0.3s;
-    }
-    #toggle:hover {
-      background: #45a049;
-      transform: scale(1.05);
-    }
-    #toggle.active {
-      background: #f44336;
-    }
-    #toggle.active:hover {
-      background: #da190b;
-    }
-    .status {
-      text-align: center;
-      margin: 20px 0;
-      padding: 10px;
-      border-radius: 6px;
-      font-weight: 500;
-    }
-    .status.connected {
-      background: #e8f5e9;
-      color: #2e7d32;
-    }
-    .status.disconnected {
-      background: #ffebee;
-      color: #c62828;
-    }
-    .status.idle {
-      background: #e3f2fd;
-      color: #1565c0;
-    }
-    .log {
-      margin-top: 20px;
-      padding: 15px;
-      background: #f9f9f9;
-      border-radius: 6px;
-      max-height: 300px;
-      overflow-y: auto;
-      font-family: 'Courier New', monospace;
-      font-size: 13px;
-    }
-    .log-entry {
-      margin: 5px 0;
-      padding: 5px;
-      border-left: 3px solid #ddd;
-      padding-left: 10px;
-    }
-    .log-entry.info { border-color: #2196F3; }
-    .log-entry.success { border-color: #4CAF50; }
-    .log-entry.warning { border-color: #FF9800; }
-    .log-entry.error { border-color: #f44336; }
-  </style>
-</head>
-<body>
-
-<div class="container">
-  <h1>🎙️ Voice Assistant</h1>
-  <p style="text-align: center; color: #666;">&nbsp;</p>
-  
-  <div id="status" class="status idle">Disconnected</div>
-  
-  <button id="toggle">🎤 Start Conversation</button>
-  
-  <div class="log" id="log"></div>
-</div>
-
-<script>
-let ws;
-let audioCtx;
-let processor;
-let source;
-let stream;
-let running = false;
-
-// Audio queue managed by server commands
-let audioQueue = [];
-let currentUtteranceId = null;
-let isPlaying = false;
-
-function log(message, type = 'info') {
-  const logDiv = document.getElementById('log');
-  const entry = document.createElement('div');
-  entry.className = `log-entry ${type}`;
-  entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
-  logDiv.appendChild(entry);
-  logDiv.scrollTop = logDiv.scrollHeight;
-}
-
-function updateStatus(text, className) {
-  const statusDiv = document.getElementById('status');
-  statusDiv.textContent = text;
-  statusDiv.className = `status ${className}`;
-}
-
-async function playNextAudio() {
-  if (isPlaying || audioQueue.length === 0) {
-    return;
-  }
-
-  const audioData = audioQueue.shift();
-  isPlaying = true;
-  
-  try {
-    // Decode base64 to blob
-    const binaryString = atob(audioData.data);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-    const blob = new Blob([bytes], { type: `audio/${audioData.format}` });
-    const url = URL.createObjectURL(blob);
-    
-    const audio = new Audio(url);
-    
-    audio.onended = () => {
-      URL.revokeObjectURL(url);
-      isPlaying = false;
-      playNextAudio(); // Play next in queue
-    };
-    
-    audio.onerror = (e) => {
-      log(`❌ Audio playback error: ${e.message}`, 'error');
-      URL.revokeObjectURL(url);
-      isPlaying = false;
-      playNextAudio();
-    };
-    
-    await audio.play();
-    log(`▶️ Playing audio chunk #${audioData.seq}`, 'success');
-    
-  } catch (err) {
-    log(`❌ Failed to play audio: ${err.message}`, 'error');
-    isPlaying = false;
-    playNextAudio();
-  }
-}
-
-function clearAudioQueue(utteranceId) {
-  const queuedCount = audioQueue.length;
-  audioQueue = [];
-  
-  // Stop currently playing audio if it belongs to old utterance
-  if (isPlaying && currentUtteranceId !== utteranceId) {
-    // Can't directly stop HTMLAudioElement, but next audio won't play
-    // until current one finishes
-    log(`🛑 Clearing queue (${queuedCount} chunks) for interruption`, 'warning');
-  }
-  
-  currentUtteranceId = utteranceId;
-}
-
-document.getElementById("toggle").onclick = async () => {
-  const button = document.getElementById("toggle");
-  
-  if (!running) {
-    // ---------- START ----------
-    log('🔌 Connecting to server...', 'info');
-    ws = new WebSocket("ws://localhost:9000");
-
-    ws.onopen = async () => {
-      log('✅ Connected to server', 'success');
-      updateStatus('Connected - Listening...', 'connected');
-      
-      try {
-        audioCtx = new AudioContext({ sampleRate: 16000 });
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-        source = audioCtx.createMediaStreamSource(stream);
-        processor = audioCtx.createScriptProcessor(4096, 1, 1);
-
-        source.connect(processor);
-        processor.connect(audioCtx.destination);
-
-        processor.onaudioprocess = (e) => {
-          if (ws.readyState !== WebSocket.OPEN) return;
-
-          const input = e.inputBuffer.getChannelData(0);
-          const buffer = new ArrayBuffer(input.length * 2);
-          const view = new DataView(buffer);
-
-          for (let i = 0; i < input.length; i++) {
-            let s = Math.max(-1, Math.min(1, input[i]));
-            view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
-          }
-
-          ws.send(buffer);
-        };
-
-        log('🎤 Microphone active', 'success');
-        running = true;
-        button.innerText = "⏹ Stop Conversation";
-        button.classList.add('active');
-        
-      } catch (err) {
-        log(`❌ Microphone error: ${err.message}`, 'error');
-        ws.close();
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Voice Assistant - Server-Controlled Playback</title>
+    <style>
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        max-width: 800px;
+        margin: 50px auto;
+        padding: 20px;
+        background: #f5f5f5;
       }
-    };
+      .container {
+        background: white;
+        border-radius: 12px;
+        padding: 30px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      }
+      h1 {
+        text-align: center;
+        color: #333;
+      }
+      #toggle {
+        display: block;
+        width: 200px;
+        margin: 20px auto;
+        padding: 15px 30px;
+        font-size: 18px;
+        border: none;
+        border-radius: 8px;
+        background: #4caf50;
+        color: white;
+        cursor: pointer;
+        transition: all 0.3s;
+      }
+      #toggle:hover {
+        background: #45a049;
+        transform: scale(1.05);
+      }
+      #toggle.active {
+        background: #f44336;
+      }
+      #toggle.active:hover {
+        background: #da190b;
+      }
+      .status {
+        text-align: center;
+        margin: 20px 0;
+        padding: 10px;
+        border-radius: 6px;
+        font-weight: 500;
+      }
+      .status.connected {
+        background: #e8f5e9;
+        color: #2e7d32;
+      }
+      .status.disconnected {
+        background: #ffebee;
+        color: #c62828;
+      }
+      .status.idle {
+        background: #e3f2fd;
+        color: #1565c0;
+      }
+      .log {
+        margin-top: 20px;
+        padding: 15px;
+        background: #f9f9f9;
+        border-radius: 6px;
+        max-height: 300px;
+        overflow-y: auto;
+        font-family: "Courier New", monospace;
+        font-size: 13px;
+      }
+      .log-entry {
+        margin: 5px 0;
+        padding: 5px;
+        border-left: 3px solid #ddd;
+        padding-left: 10px;
+      }
+      .log-entry.info {
+        border-color: #2196f3;
+      }
+      .log-entry.success {
+        border-color: #4caf50;
+      }
+      .log-entry.warning {
+        border-color: #ff9800;
+      }
+      .log-entry.error {
+        border-color: #f44336;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>🎙️ Voice Assistant</h1>
+      <p style="text-align: center; color: #666">&nbsp;</p>
 
-    ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      
-      if (msg.type === "clear_queue") {
-        // Server tells us to clear the queue (new speech detected)
-        log(`🔔 Interruption - clearing queue (utterance ${msg.old_utterance_id} → ${msg.new_utterance_id})`, 'warning');
-        clearAudioQueue(msg.new_utterance_id);
-        
-      } else if (msg.type === "audio_chunk") {
-        // Add audio to queue
-        log(`📥 Received audio chunk #${msg.seq} (utterance ${msg.utterance_id})`, 'info');
-        
-        // Only queue if it matches current utterance
-        if (msg.utterance_id === currentUtteranceId) {
-          audioQueue.push({
-            seq: msg.seq,
-            data: msg.data,
-            format: msg.format.format || 'mp3',
-            utteranceId: msg.utterance_id
-          });
-          
-          // Start playing if not already playing
-          playNextAudio();
-        } else {
-          log(`⏭️ Skipping old audio chunk #${msg.seq} (utterance ${msg.utterance_id})`, 'warning');
+      <div id="status" class="status idle">Disconnected</div>
+
+      <button id="toggle">🎤 Start Conversation</button>
+
+      <div class="log" id="log"></div>
+    </div>
+
+    <script>
+      let ws;
+      let audioCtx;
+      let processor;
+      let source;
+      let stream;
+      let running = false;
+
+      // Audio queue managed by server commands
+      let audioQueue = [];
+      let currentUtteranceId = null;
+      let isPlaying = false;
+
+      function log(message, type = "info") {
+        const logDiv = document.getElementById("log");
+        const entry = document.createElement("div");
+        entry.className = `log-entry ${type}`;
+        entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+        logDiv.appendChild(entry);
+        logDiv.scrollTop = logDiv.scrollHeight;
+      }
+
+      function updateStatus(text, className) {
+        const statusDiv = document.getElementById("status");
+        statusDiv.textContent = text;
+        statusDiv.className = `status ${className}`;
+      }
+
+      async function playNextAudio() {
+        if (isPlaying || audioQueue.length === 0) {
+          return;
         }
-        
-      } else if (msg.type === "audio_complete") {
-        // All audio for this utterance has been sent
-        log(`✅ Audio complete for utterance ${msg.utterance_id}`, 'success');
+
+        const audioData = audioQueue.shift();
+        isPlaying = true;
+
+        try {
+          // Decode base64 to blob
+          const binaryString = atob(audioData.data);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          // Debug first 64 bytes
+          const header = bytes.slice(0, 64);
+          let hex = "";
+          for (let i = 0; i < header.length; i++) {
+            hex += header[i].toString(16).padStart(2, "0") + " ";
+          }
+          log("🔍 WAV HEADER: " + hex, "warning");
+
+          // ASCII check
+          const ascii = Array.from(header)
+            .map((b) => (b >= 32 && b <= 126 ? String.fromCharCode(b) : "."))
+            .join("");
+          log("🔍 WAV ASCII: " + ascii, "warning");
+
+          const blob = new Blob([bytes], { type: "audio/wav" });
+
+          const url = URL.createObjectURL(blob);
+
+          const audio = new Audio(url);
+
+          audio.onended = () => {
+            URL.revokeObjectURL(url);
+            isPlaying = false;
+            playNextAudio(); // Play next in queue
+          };
+
+          audio.onerror = (e) => {
+            log(`❌ Audio playback error: ${e.message}`, "error");
+            URL.revokeObjectURL(url);
+            isPlaying = false;
+            playNextAudio();
+          };
+
+          await audio.play();
+          log(`▶️ Playing audio chunk #${audioData.seq}`, "success");
+        } catch (err) {
+          log(`❌ Failed to play audio: ${err.message}`, "error");
+          isPlaying = false;
+          playNextAudio();
+        }
       }
-    };
 
-    ws.onclose = () => {
-      log('🔌 Disconnected from server', 'warning');
-      updateStatus('Disconnected', 'disconnected');
-    };
+      function clearAudioQueue(utteranceId) {
+        const queuedCount = audioQueue.length;
+        audioQueue = [];
 
-    ws.onerror = (err) => {
-      log(`❌ WebSocket error: ${err.message}`, 'error');
-    };
+        // Stop currently playing audio if it belongs to old utterance
+        if (isPlaying && currentUtteranceId !== utteranceId) {
+          // Can't directly stop HTMLAudioElement, but next audio won't play
+          // until current one finishes
+          log(
+            `🛑 Clearing queue (${queuedCount} chunks) for interruption`,
+            "warning",
+          );
+        }
 
-  } else {
-    // ---------- STOP ----------
-    log('🛑 Stopping conversation...', 'info');
-    running = false;
+        currentUtteranceId = utteranceId;
+      }
 
-    processor?.disconnect();
-    source?.disconnect();
-    stream?.getTracks().forEach(t => t.stop());
-    audioCtx?.close();
-    ws?.close();
+      document.getElementById("toggle").onclick = async () => {
+        const button = document.getElementById("toggle");
 
-    audioQueue = [];
-    isPlaying = false;
-    currentUtteranceId = null;
+        if (!running) {
+          // ---------- START ----------
+          log("🔌 Connecting to server...", "info");
+          ws = new WebSocket("ws://localhost:9000");
 
-    button.innerText = "🎤 Start Conversation";
-    button.classList.remove('active');
-    updateStatus('Disconnected', 'idle');
-    log('✅ Conversation stopped', 'info');
-  }
-};
-</script>
+          ws.onopen = async () => {
+            log("✅ Connected to server", "success");
+            updateStatus("Connected - Listening...", "connected");
 
-</body>
+            try {
+              audioCtx = new AudioContext({ sampleRate: 16000 });
+              stream = await navigator.mediaDevices.getUserMedia({
+                audio: true,
+              });
+
+              source = audioCtx.createMediaStreamSource(stream);
+              processor = audioCtx.createScriptProcessor(4096, 1, 1);
+
+              source.connect(processor);
+              processor.connect(audioCtx.destination);
+
+              processor.onaudioprocess = (e) => {
+                if (ws.readyState !== WebSocket.OPEN) return;
+
+                const input = e.inputBuffer.getChannelData(0);
+                const buffer = new ArrayBuffer(input.length * 2);
+                const view = new DataView(buffer);
+
+                for (let i = 0; i < input.length; i++) {
+                  let s = Math.max(-1, Math.min(1, input[i]));
+                  view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+                }
+
+                ws.send(buffer);
+              };
+
+              log("🎤 Microphone active", "success");
+              running = true;
+              button.innerText = "⏹ Stop Conversation";
+              button.classList.add("active");
+            } catch (err) {
+              log(`❌ Microphone error: ${err.message}`, "error");
+              ws.close();
+            }
+          };
+
+          ws.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+
+            if (msg.type === "clear_queue") {
+              // Server tells us to clear the queue (new speech detected)
+              log(
+                `🔔 Interruption - clearing queue (utterance ${msg.old_utterance_id} → ${msg.new_utterance_id})`,
+                "warning",
+              );
+              clearAudioQueue(msg.new_utterance_id);
+            } else if (msg.type === "audio_chunk") {
+              // Add audio to queue
+              log(
+                `📥 Received audio chunk #${msg.seq} (utterance ${msg.utterance_id})`,
+                "info",
+              );
+
+              // Only queue if it matches current utterance
+              if (msg.utterance_id === currentUtteranceId) {
+                audioQueue.push({
+                  seq: msg.seq,
+                  data: msg.data,
+                  format: msg.format.format || "mp3",
+                  utteranceId: msg.utterance_id,
+                });
+
+                // Start playing if not already playing
+                playNextAudio();
+              } else {
+                log(
+                  `⏭️ Skipping old audio chunk #${msg.seq} (utterance ${msg.utterance_id})`,
+                  "warning",
+                );
+              }
+            } else if (msg.type === "audio_complete") {
+              // All audio for this utterance has been sent
+              log(
+                `✅ Audio complete for utterance ${msg.utterance_id}`,
+                "success",
+              );
+            }
+          };
+
+          ws.onclose = () => {
+            log("🔌 Disconnected from server", "warning");
+            updateStatus("Disconnected", "disconnected");
+          };
+
+          ws.onerror = (err) => {
+            log(`❌ WebSocket error: ${err.message}`, "error");
+          };
+        } else {
+          // ---------- STOP ----------
+          log("🛑 Stopping conversation...", "info");
+          running = false;
+
+          processor?.disconnect();
+          source?.disconnect();
+          stream?.getTracks().forEach((t) => t.stop());
+          audioCtx?.close();
+          ws?.close();
+
+          audioQueue = [];
+          isPlaying = false;
+          currentUtteranceId = null;
+
+          button.innerText = "🎤 Start Conversation";
+          button.classList.remove("active");
+          updateStatus("Disconnected", "idle");
+          log("✅ Conversation stopped", "info");
+        }
+      };
+    </script>
+  </body>
 </html>

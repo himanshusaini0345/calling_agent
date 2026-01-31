@@ -98,7 +98,7 @@
   <body>
     <div class="container">
       <h1>🎙️ Voice Assistant</h1>
-      <p style="text-align: center; color: #666">&nbsp;</p>
+      <p style="text-align: center; color: #666">Raw PCM16 Audio Mode</p>
 
       <div id="status" class="status idle">Disconnected</div>
 
@@ -135,6 +135,48 @@
         statusDiv.className = `status ${className}`;
       }
 
+      function playRawPCM16(base64Data, seq) {
+        try {
+          // Decode base64 to binary
+          const binary = atob(base64Data);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) {
+            bytes[i] = binary.charCodeAt(i);
+          }
+
+          // Convert PCM16 (Int16) to Float32 for Web Audio API
+          const pcm16 = new Int16Array(bytes.buffer);
+          const float32 = new Float32Array(pcm16.length);
+
+          for (let i = 0; i < pcm16.length; i++) {
+            float32[i] = pcm16[i] / 32768.0; // Normalize to [-1, 1]
+          }
+
+          // Create audio buffer at 16kHz
+          const buffer = audioCtx.createBuffer(1, float32.length, 16000);
+          buffer.copyToChannel(float32, 0);
+
+          // Create and play buffer source
+          const bufferSource = audioCtx.createBufferSource();
+          bufferSource.buffer = buffer;
+          bufferSource.connect(audioCtx.destination);
+          
+          bufferSource.onended = () => {
+            isPlaying = false;
+            log(`✓ Finished playing chunk #${seq}`, "success");
+            playNextAudio(); // Play next chunk in queue
+          };
+
+          bufferSource.start();
+          log(`▶️ Playing PCM16 audio chunk #${seq} (${pcm16.length} samples)`, "success");
+
+        } catch (err) {
+          log(`❌ Failed to play audio: ${err.message}`, "error");
+          isPlaying = false;
+          playNextAudio();
+        }
+      }
+
       async function playNextAudio() {
         if (isPlaying || audioQueue.length === 0) {
           return;
@@ -143,63 +185,14 @@
         const audioData = audioQueue.shift();
         isPlaying = true;
 
-        try {
-          // Decode base64 to blob
-          const binaryString = atob(audioData.data);
-          const bytes = new Uint8Array(binaryString.length);
-          for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-          }
-          // Debug first 64 bytes
-          const header = bytes.slice(0, 64);
-          let hex = "";
-          for (let i = 0; i < header.length; i++) {
-            hex += header[i].toString(16).padStart(2, "0") + " ";
-          }
-          log("🔍 WAV HEADER: " + hex, "warning");
-
-          // ASCII check
-          const ascii = Array.from(header)
-            .map((b) => (b >= 32 && b <= 126 ? String.fromCharCode(b) : "."))
-            .join("");
-          log("🔍 WAV ASCII: " + ascii, "warning");
-
-          const blob = new Blob([bytes], { type: "audio/wav" });
-
-          const url = URL.createObjectURL(blob);
-
-          const audio = new Audio(url);
-
-          audio.onended = () => {
-            URL.revokeObjectURL(url);
-            isPlaying = false;
-            playNextAudio(); // Play next in queue
-          };
-
-          audio.onerror = (e) => {
-            log(`❌ Audio playback error: ${e.message}`, "error");
-            URL.revokeObjectURL(url);
-            isPlaying = false;
-            playNextAudio();
-          };
-
-          await audio.play();
-          log(`▶️ Playing audio chunk #${audioData.seq}`, "success");
-        } catch (err) {
-          log(`❌ Failed to play audio: ${err.message}`, "error");
-          isPlaying = false;
-          playNextAudio();
-        }
+        playRawPCM16(audioData.data, audioData.seq);
       }
 
       function clearAudioQueue(utteranceId) {
         const queuedCount = audioQueue.length;
         audioQueue = [];
 
-        // Stop currently playing audio if it belongs to old utterance
-        if (isPlaying && currentUtteranceId !== utteranceId) {
-          // Can't directly stop HTMLAudioElement, but next audio won't play
-          // until current one finishes
+        if (queuedCount > 0) {
           log(
             `🛑 Clearing queue (${queuedCount} chunks) for interruption`,
             "warning",
@@ -222,7 +215,11 @@
             updateStatus("Connected - Listening...", "connected");
 
             try {
-              audioCtx = new AudioContext({ sampleRate: 16000 });
+              audioCtx = new AudioContext({
+                sampleRate: 16000,
+                latencyHint: "interactive",
+              });
+
               stream = await navigator.mediaDevices.getUserMedia({
                 audio: true,
               });
@@ -244,12 +241,6 @@
                   let s = Math.max(-1, Math.min(1, input[i]));
                   view.setInt16(i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
                 }
-                console.log(
-                  "📤 sending audio",
-                  buffer.byteLength,
-                  "ws state",
-                  ws.readyState,
-                );
 
                 ws.send(buffer);
               };
@@ -265,7 +256,6 @@
           };
 
           ws.onmessage = (event) => {
-            console.log("📥 WS message received", event.data);
             const msg = JSON.parse(event.data);
 
             if (msg.type === "clear_queue") {
@@ -313,7 +303,7 @@
           };
 
           ws.onerror = (err) => {
-            log(`❌ WebSocket error: ${err.message}`, "error");
+            log(`❌ WebSocket error: ${err.message || 'Unknown error'}`, "error");
           };
         } else {
           // ---------- STOP ----------

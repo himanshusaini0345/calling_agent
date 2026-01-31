@@ -21,7 +21,7 @@ class AzureTTS(TTSProvider):
 
         # IMPORTANT: force WAV RIFF output
         self.speech_config.set_speech_synthesis_output_format(
-            speechsdk.SpeechSynthesisOutputFormat.Riff16Khz16BitMonoPcm
+            speechsdk.SpeechSynthesisOutputFormat.Raw16Khz16BitMonoPcm
         )
 
         # 👇 NO speaker, NO stream

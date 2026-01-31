@@ -134,10 +134,12 @@ async def websocket_endpoint(ws: WebSocket):
         if message_type == "audio_chunk":
             # Base64 encode audio bytes for browser
             audio_bytes: bytes = data["data"]
+            encoded = base64.b64encode(audio_bytes)
             data = {
                 "seq": data["seq"],
                 "utterance_id": data["utterance_id"],
                 "data": base64.b64encode(audio_bytes).decode("utf-8"),
+                # "data": base64.b64encode(audio_bytes).decode("utf-8"),
             }
 
         await ws.send_json({

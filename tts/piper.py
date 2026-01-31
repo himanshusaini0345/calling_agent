@@ -4,7 +4,8 @@ import wave
 import io
 from typing import Optional
 from piper import PiperVoice
-from .base import TTSProvider
+
+from tts.tts_provider import TTSProvider
 
 
 class PiperTTS(TTSProvider):

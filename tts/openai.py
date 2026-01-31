@@ -1,11 +1,7 @@
 """OpenAI Text-to-Speech provider."""
-import io
-import os
-import tempfile
-import wave
-import asyncio
-from openai import AsyncOpenAI, OpenAI
-from .base import TTSProvider
+from openai import AsyncOpenAI
+
+from tts.tts_provider import TTSProvider
 
 
 class OpenAITTS(TTSProvider):

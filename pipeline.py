@@ -3,7 +3,9 @@ import asyncio
 import logging
 from time import perf_counter
 from typing import AsyncIterator, Callable, Optional
-from providers.base import STTProvider, LLMProvider, TTSProvider
+from providers.base import STTProvider, LLMProvider
+from translators.indicTrans2_translator import IndicTrans2Translator
+from tts.tts_provider import TTSProvider
 
 logger = logging.getLogger("app")
 
@@ -15,6 +17,7 @@ class VoicePipeline:
         stt: STTProvider,
         llm: LLMProvider,
         tts: TTSProvider,
+        translator: Optional[IndicTrans2Translator],
         min_tts_chars,
         max_tts_chars,
         sentence_delimiters: tuple = (".", "!", "?", ","),
@@ -33,6 +36,7 @@ class VoicePipeline:
         self.stt = stt
         self.llm = llm
         self.tts = tts
+        self.translator = translator
         self.sentence_delimiters = sentence_delimiters
         self.min_tts_chars = min_tts_chars
         self.max_tts_chars = max_tts_chars
@@ -177,9 +181,30 @@ class VoicePipeline:
                 "new_utterance_id": current_id
             })
             
+            # 🌐 OPTIONAL TRANSLATION (SYNC → run in executor)
+            if self.translator:
+                loop = asyncio.get_running_loop()
+                try:
+                    translated_text = await loop.run_in_executor(
+                        None,
+                        self.translator.translate,
+                        text
+                    )
+                except Exception as e:
+                    logger.exception("Translation failed, falling back to original text")
+                    translated_text = text
+            else:
+                translated_text = text
+
+            # Abort if interrupted during translation
+            if current_id != self._utterance_id:
+                if self.enable_timing:
+                    logger.info("⛔ Interrupted during translation")
+                continue
+        
             # Process each transcribed utterance
             asyncio.create_task(
-                self.process_utterance(text, audio_callback, current_id)
+                self.process_utterance(translated_text, audio_callback, current_id)
             )
     
     async def cleanup(self):

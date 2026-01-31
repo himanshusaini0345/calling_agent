@@ -1,6 +1,7 @@
 import asyncio
 import azure.cognitiveservices.speech as speechsdk
-from .base import TTSProvider
+
+from tts.tts_provider import TTSProvider
 
 
 class AzureTTS(TTSProvider):

@@ -1,9 +1,7 @@
 """Local/Cloud TTS provider using Microsoft Edge TTS (free, no API key needed)."""
-import asyncio
-import io
-from typing import Optional
 import edge_tts
-from .base import TTSProvider
+
+from tts.tts_provider import TTSProvider
 
 
 class EdgeTTS(TTSProvider):

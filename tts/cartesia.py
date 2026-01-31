@@ -1,6 +1,7 @@
 """Cartesia TTS provider."""
 import aiohttp
-from .base import TTSProvider
+
+from tts.tts_provider import TTSProvider
 
 
 class CartesiaTTS(TTSProvider):
@@ -19,8 +20,8 @@ class CartesiaTTS(TTSProvider):
         
         Args:
             api_key: Cartesia API key
-            voice_id: Voice ID to use
-            model_id: Model ID (sonic-english, sonic-multilingual)
+            voice_id: Voice ID to use (faf0731e-dfb9-4cfc-8119-259a79b27e12)
+            model_id: Model ID (sonic-3, sonic-english, sonic-multilingual)
             output_format: Audio format (mp3, wav, pcm)
             sample_rate: Sample rate in Hz
         """

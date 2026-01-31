@@ -1,7 +1,16 @@
 """Provider factory for easy instantiation."""
 import os
 from typing import Optional
-from .base import STTProvider, LLMProvider, TTSProvider
+
+from tts.azure import AzureTTS
+from tts.cartesia import CartesiaTTS
+from tts.coqui import CoquiTTS
+from tts.edge import EdgeTTS
+from tts.espeak import EspeakTTS
+from tts.openai import OpenAITTS
+from tts.piper import PiperTTS
+from tts.tts_provider import TTSProvider
+from .base import STTProvider, LLMProvider
 
 
 class ProviderFactory:
@@ -64,31 +73,24 @@ class ProviderFactory:
             **kwargs: Provider-specific arguments
         """
         if provider == "local":
-            from .tts_local import PiperTTS
             return PiperTTS(**kwargs)
         elif provider == "azure":
-            from .tts_azure import AzureTTS
             return AzureTTS(
                 speech_key=kwargs["speech_key"],
                 region=kwargs["region"],
                 voice=kwargs.get("voice", "hi-IN-SwaraNeural")
             )
         elif provider == "cartesia":
-            from .tts_cartesia import CartesiaTTS
             api_key = kwargs.pop("api_key", os.getenv("CARTESIA_API_KEY"))
             return CartesiaTTS(api_key=api_key, **kwargs)
         elif provider == "openai":
-            from .tts_openai import OpenAITTS
             api_key = kwargs.pop("api_key", os.getenv("OPENAI_API_KEY"))
             return OpenAITTS(api_key=api_key, **kwargs)
         elif provider == "pyttsx3":
-            from .tts_espeak import EspeakTTS
             return EspeakTTS(**kwargs)
         elif provider == "edge":
-            from .tts_edge import EdgeTTS
             return EdgeTTS(**kwargs)
         elif provider == "coqui":
-            from .tts_coqui import CoquiTTS
             return CoquiTTS(**kwargs)
         else:
             raise ValueError(f"Unknown TTS provider: {provider}")

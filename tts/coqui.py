@@ -3,8 +3,8 @@ import asyncio
 import io
 import numpy as np
 from typing import Optional
-from TTS.api import TTS
-from .base import TTSProvider
+
+from tts.tts_provider import TTSProvider
 
 
 class CoquiTTS(TTSProvider):

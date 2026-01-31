@@ -1,10 +1,9 @@
 import asyncio
-import io
 import os
 import tempfile
-import wave
 import pyttsx3
-from .base import TTSProvider
+
+from tts.tts_provider import TTSProvider
 
 
 class EspeakTTS(TTSProvider):

@@ -14,12 +14,8 @@ class FasterWhisperSTT(STTProvider):
     def __init__(
         self,
         model: WhisperModel,
-        model_size: str = "base",
-        language: str = "hi",  
-        device: str = "cpu",
-        compute_type: str = "int8",
+        language: str = "en",
         vad_filter: bool = True,
-        silence_timeout: float = 0.1,  # seconds
         min_audio_seconds: float = 1.0,
     ):
         """
@@ -39,8 +35,6 @@ class FasterWhisperSTT(STTProvider):
         self.buffer = bytearray()
         self.min_chunk_size = self.sample_rate * 2 * min_audio_seconds # 1 second of 16-bit audio
         self.text_buffer: list[str] = []
-        self.last_speech_time = None
-        self.silence_timeout = silence_timeout
 
     async def transcribe_stream(self, audio_stream: AsyncIterator[bytes]) -> AsyncIterator[str]:
         """Transcribe streaming audio chunks."""
@@ -62,32 +56,16 @@ class FasterWhisperSTT(STTProvider):
                 self._transcribe,
                 audio_np
             )
-            now = monotonic()
-            speech_detected = False
-
-            for segment in segments:
-                text = segment.text.strip()
-                if not text:
-                    continue
-                
-                speech_detected = True
-                self.last_speech_time = now
-                self.text_buffer.append(text)
-
             
 
-            # 🔑 ENDPOINTING LOGIC
-            if (
-                self.text_buffer
-                and self.last_speech_time
-                and (now - self.last_speech_time) >= self.silence_timeout
-            ):
-                utterance = " ".join(self.text_buffer).strip()
-                self.text_buffer.clear()
-                self.last_speech_time = None
-                
-                if utterance:
-                    yield utterance
+            utterance = " ".join(
+                segment.text.strip()
+                for segment in segments
+                if segment.text.strip()
+            )
+
+            if utterance:
+                yield utterance                  
     
     def _transcribe(self, audio_np):
         """Synchronous transcription (run in thread pool)."""

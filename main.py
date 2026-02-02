@@ -12,6 +12,7 @@ import logging
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from dotenv import load_dotenv
 from transformers import AutoModel
+from faster_whisper import WhisperModel
 
 from src.data.knowledge_base import knowledge_base
 from src.logging_config import setup_logging
@@ -48,6 +49,11 @@ logger.info("🔧 Initializing providers...")
 
 logger.info("🔧 Loading stt model")
 model = AutoModel.from_pretrained("ai4bharat/indic-conformer-600m-multilingual", trust_remote_code=True)
+# model = WhisperModel(
+#             "base",
+#             device="cpu",
+#             compute_type="int8"
+#         )
 
 STT_CONFIG = {
     "provider": "indic",
@@ -64,10 +70,12 @@ LLM_CONFIG = {
 llm = ProviderFactory.create_llm(**LLM_CONFIG)
 
 TTS_CONFIG = {
-    "provider": "azure",
-    "speech_key" : os.getenv("AZURE_SPEECH_KEY"),
-    "region" : os.getenv("AZURE_SPEECH_REGION"),
-    "voice" : "hi-IN-SwaraNeural"
+    "provider": "piper",
+    "model_path": "models/en_US-lessac-medium.onnx"
+    # "provider": "azure",
+    # "speech_key" : os.getenv("AZURE_SPEECH_KEY"),
+    # "region" : os.getenv("AZURE_SPEECH_REGION"),
+    # "voice" : "hi-IN-SwaraNeural"
 }
 tts = ProviderFactory.create_tts(**TTS_CONFIG)
 
@@ -77,7 +85,7 @@ pipeline = VoicePipeline(
     stt=stt,
     llm=llm,
     tts=tts,
-    translator=translator,
+    # translator=translator,
     **PIPELINE_CONFIG
 )
 
@@ -104,7 +112,7 @@ async def warmup():
         break
 
     # 3️⃣ Warm TTS
-    await tts.synthesize("नमस्ते")
+    await tts.synthesize("hello")
 
     # 4️⃣ Warm translator
     if translator:

@@ -3,7 +3,9 @@ import asyncio
 import wave
 import io
 from typing import Optional
-from piper import PiperVoice
+import subprocess
+import tempfile
+import os
 
 from src.tts.tts_provider import TTSProvider
 
@@ -27,12 +29,9 @@ class PiperTTS(TTSProvider):
         """
         print(f"Loading Piper voice model: {model_path}")
         
-        if config_path is None:
-            config_path = model_path + ".json"
-        
-        self.voice = PiperVoice.load(model_path, config_path=config_path)
-        self.speaker_id = speaker_id
-        self.sample_rate = self.voice.config.sample_rate
+        self.model_path = model_path
+        self.sample_rate = 22050  # or read once from json if you want
+
     
     async def synthesize(self, text: str) -> bytes:
         """Synthesize text to WAV audio bytes."""
@@ -41,27 +40,37 @@ class PiperTTS(TTSProvider):
         return wav_bytes
     
     def _synthesize_sync(self, text: str) -> bytes:
-        """Synchronous synthesis (run in thread pool)."""
-        # Create in-memory WAV file
-        wav_io = io.BytesIO()
-        
-        with wave.open(wav_io, "wb") as wav_file:
-            wav_file.setframerate(self.sample_rate)
-            wav_file.setsampwidth(2)  # 16-bit
-            wav_file.setnchannels(1)  # Mono
-            
-            # Synthesize audio
-            self.voice.synthesize(
-                text,
-                wav_file
+        if not text.strip():
+            return b""
+
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            temp_wav = f.name
+
+        try:
+            proc = subprocess.run(
+                [
+                    "piper",
+                    "--model", self.model_path,
+                    "--output_file", temp_wav,
+                ],
+                input=text.encode("utf-8"),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=True,
             )
-        
-        raw = wav_io.getvalue()
 
-        print("🔍 WAV_BYTES_LEN:", len(raw))
-        print("🔍 WAV_BYTES_HEX:", raw[:64].hex(" "))
+            with open(temp_wav, "rb") as f:
+                wav_bytes = f.read()
 
-        return raw
+            # 🔥 HARD GUARANTEE (keep this)
+            if len(wav_bytes) <= 44:
+                raise RuntimeError("Piper produced header-only WAV")
+
+            return wav_bytes
+
+        finally:
+            if os.path.exists(temp_wav):
+                os.unlink(temp_wav)
 
     
     def get_audio_format(self) -> dict:

@@ -63,6 +63,8 @@ STT_CONFIG = {
 stt = ProviderFactory.create_stt(**STT_CONFIG)
 
 LLM_CONFIG = {
+    #  "provider": "local",
+
     "provider": "openai",
     "api_key" : os.getenv("OPENAI_API_KEY"),
     "knowledge_base": knowledge_base
@@ -110,9 +112,12 @@ async def warmup():
     # 2️⃣ Warm LLM
     async for _ in llm.generate_stream("hello"):
         break
+    # _ = llm.tokenizer("hello", return_tensors="pt")
+
+    await asyncio.sleep(0.1)
 
     # 3️⃣ Warm TTS
-    await tts.synthesize("hello")
+    await tts.synthesize("Hello, this is a warmup sentence to initialize the text to speech system.")
 
     # 4️⃣ Warm translator
     if translator:

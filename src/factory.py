@@ -12,6 +12,7 @@ from src.tts.cartesia import CartesiaTTS
 from src.tts.coqui import CoquiTTS
 from src.tts.edge import EdgeTTS
 from src.tts.espeak import EspeakTTS
+from src.tts.gemini import GeminiTTS
 from src.tts.openai import OpenAITTS
 from src.tts.piper import PiperTTS
 from src.tts.tts_provider import TTSProvider
@@ -76,6 +77,8 @@ class ProviderFactory:
             return PiperTTS(**kwargs)
         elif provider == "azure":
             return AzureTTS(**kwargs)
+        elif provider == "gemini":
+            return GeminiTTS(**kwargs)
         elif provider == "cartesia":
             return CartesiaTTS(**kwargs)
         elif provider == "openai":

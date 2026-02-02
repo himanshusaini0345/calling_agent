@@ -14,7 +14,7 @@ class DeepgramSTT(STTProvider):
         self,
         api_key: str,
         model: str = "nova-2",
-        language: str = "en",
+        language: str = "hi",
         sample_rate: int = 16000
     ):
         """

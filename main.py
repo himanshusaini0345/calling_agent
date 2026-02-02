@@ -35,7 +35,7 @@ logger = logging.getLogger("app")
 HF_TOKEN = os.getenv("HF_TOKEN")
 
 PIPELINE_CONFIG = {
-    "min_tts_chars": 40,
+    "min_tts_chars": 100,
     "max_tts_chars": 200,
     "sentence_delimiters": (".", "!", "?", ","),
     "enable_timing": True,
@@ -48,7 +48,7 @@ PIPELINE_CONFIG = {
 logger.info("🔧 Initializing providers...")
 
 logger.info("🔧 Loading stt model")
-model = AutoModel.from_pretrained("ai4bharat/indic-conformer-600m-multilingual", trust_remote_code=True)
+# model = AutoModel.from_pretrained("ai4bharat/indic-conformer-600m-multilingual", trust_remote_code=True)
 # model = WhisperModel(
 #             "base",
 #             device="cpu",
@@ -56,8 +56,11 @@ model = AutoModel.from_pretrained("ai4bharat/indic-conformer-600m-multilingual",
 #         )
 
 STT_CONFIG = {
-    "provider": "indic",
-    "model": model
+    # "provider": "indic",
+    # "model": model
+    
+    "provider": "deepgram",
+    "api_key" : os.getenv("DEEPGRAM_API_KEY"),
 }
 
 stt = ProviderFactory.create_stt(**STT_CONFIG)
@@ -72,12 +75,16 @@ LLM_CONFIG = {
 llm = ProviderFactory.create_llm(**LLM_CONFIG)
 
 TTS_CONFIG = {
-    "provider": "piper",
-    "model_path": "models/en_US-lessac-medium.onnx"
-    # "provider": "azure",
-    # "speech_key" : os.getenv("AZURE_SPEECH_KEY"),
-    # "region" : os.getenv("AZURE_SPEECH_REGION"),
-    # "voice" : "hi-IN-SwaraNeural"
+    # "provider": "piper",
+    # "model_path": "models/en_US-lessac-medium.onnx"
+    
+    # "provider": "gemini",
+    # "api_key" : os.getenv("GOOGLE_API_KEY"),
+    
+    "provider": "azure",
+    "speech_key" : os.getenv("AZURE_SPEECH_KEY"),
+    "region" : os.getenv("AZURE_SPEECH_REGION"),
+    "voice" : "hi-IN-SwaraNeural"
 }
 tts = ProviderFactory.create_tts(**TTS_CONFIG)
 
@@ -101,27 +108,27 @@ app = FastAPI()
 async def warmup():
     logger.info("🔥 Warming up models...")
 
-    # 1️⃣ Warm STT (fake silence)
-    dummy_audio = (b"\x00\x00" * 16000)  # 1s silence
-    async def dummy_stream():
-        yield dummy_audio
+    # # 1️⃣ Warm STT (fake silence)
+    # dummy_audio = (b"\x00\x00" * 16000)  # 1s silence
+    # async def dummy_stream():
+    #     yield dummy_audio
 
-    async for _ in stt.transcribe_stream(dummy_stream()):
-        pass
+    # async for _ in stt.transcribe_stream(dummy_stream()):
+    #     pass
 
-    # 2️⃣ Warm LLM
-    async for _ in llm.generate_stream("hello"):
-        break
-    # _ = llm.tokenizer("hello", return_tensors="pt")
+    # # 2️⃣ Warm LLM
+    # async for _ in llm.generate_stream("hello"):
+    #     break
+    # # _ = llm.tokenizer("hello", return_tensors="pt")
 
-    await asyncio.sleep(0.1)
+    # await asyncio.sleep(0.1)
 
-    # 3️⃣ Warm TTS
-    await tts.synthesize("Hello, this is a warmup sentence to initialize the text to speech system.")
+    # # 3️⃣ Warm TTS
+    # await tts.synthesize("Hello, this is a warmup sentence to initialize the text to speech system.")
 
-    # 4️⃣ Warm translator
-    if translator:
-        translator.translate("hello")
+    # # 4️⃣ Warm translator
+    # if translator:
+    #     translator.translate("hello")
 
     logger.info("✅ Warmup complete")
     

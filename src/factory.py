@@ -1,5 +1,6 @@
 """Provider factory for easy instantiation."""
 
+from src.llm.local import LocalLLM
 from src.llm.llm_provider import LLMProvider
 from src.llm.openai import OpenAILLM
 from src.stt.deepgram import DeepgramSTT
@@ -54,6 +55,8 @@ class ProviderFactory:
         """
         if provider == "openai":
             return OpenAILLM(**kwargs)
+        elif provider == "local":
+            return LocalLLM(**kwargs)
         else:
             raise ValueError(f"Unknown LLM provider: {provider}")
     
